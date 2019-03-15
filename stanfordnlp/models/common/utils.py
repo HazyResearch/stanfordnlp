@@ -7,10 +7,77 @@ import random
 import json
 import unicodedata
 import torch
+from torch.optim import Optimizer
+from torch.optim.optimizer import Optimizer, required
 
 from stanfordnlp.models.common.constant import lcode2lang
 import stanfordnlp.models.common.seq2seq_constant as constant
 import stanfordnlp.utils.conll18_ud_eval as ud_eval
+
+
+def poincare_grad(p, d_p):
+    """
+    Calculates Riemannian grad from Euclidean grad.
+    Args:
+        p (Tensor): Current point in the ball
+        d_p (Tensor): Euclidean gradient at p
+    """
+    p_sqnorm = torch.sum(p.data ** 2, dim=-1, keepdim=True)
+    d_p = d_p * ((1 - p_sqnorm) ** 2 / 4).expand_as(d_p)
+    return d_p
+
+def _correct(x, eps=1e-10):
+    current_norms = torch.norm(x,2,x.dim() - 1)
+    mask_idx      = current_norms < 1./(1+eps)
+    modified      = 1./((1+eps)*current_norms)
+    modified[mask_idx] = 1.0
+    return modified.unsqueeze(-1)
+
+def euclidean_grad(p, d_p):
+    return d_p
+
+def retraction(p, d_p, lr):
+    # Gradient clipping.
+    d_p.clamp_(min=-10000, max=10000)
+    p.data.add_(-lr, d_p)
+    #project back to the manifold.
+    p.data = p.data * _correct(p.data)
+
+
+class RiemannianSGD(Optimizer):
+    r"""Riemannian stochastic gradient descent.
+    Args:
+        params (iterable): iterable of parameters to optimize or dicts defining
+            parameter groups
+        rgrad (Function): Function to compute the Riemannian gradient from
+            an Euclidean gradient
+        retraction (Function): Function to update the parameters via a
+            retraction of the Riemannian gradient
+        lr (float): learning rate
+    """
+
+    def __init__(self, params, lr=required, rgrad=required, retraction=required):
+        defaults = dict(lr=lr, rgrad=rgrad, retraction=retraction)
+        super(RiemannianSGD, self).__init__(params, defaults)
+
+    def step(self, lr=None):
+        """Performs a single optimization step.
+        Arguments:
+            lr (float, optional): learning rate for the current update.
+        """
+        loss = None
+
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                d_p = p.grad.data
+                if lr is None:
+                    lr = group['lr']
+                d_p = group['rgrad'](p, d_p)
+                group['retraction'](p, d_p, lr)
+
+        return loss
 
 # filenames
 def get_wordvec_file(wordvec_dir, shorthand):
@@ -57,6 +124,8 @@ def harmonic_mean(a, weights=None):
 def get_optimizer(name, parameters, lr, betas=(0.9, 0.999), eps=1e-8):
     if name == 'sgd':
         return torch.optim.SGD(parameters, lr=lr)
+    elif name == 'rsgd':
+        return RiemannianSGD(parameters, lr=lr, rgrad=poincare_grad, retraction=retraction)
     elif name == 'adagrad':
         return torch.optim.Adagrad(parameters, lr=lr)
     elif name == 'adam':

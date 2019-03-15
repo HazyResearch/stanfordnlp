@@ -134,20 +134,20 @@ class Sentence:
 
     def print_tokens(self, file=None):
         for tok in self.tokens:
-            print(tok, file=file)
+            print(tok)
 
     def tokens_string(self):
         toks_string = io.StringIO()
         self.print_tokens(file=toks_string)
         return toks_string.getvalue().strip()
 
-    def print_words(self, file=None):
+    def print_words(self):
         for word in self.words:
-            print(word, file=file)
+            print(word)
 
     def words_string(self):
         wrds_string = io.StringIO()
-        self.print_words(file=wrds_string)
+        self.print_tokens(file=wrds_string)
         return wrds_string.getvalue().strip()
 
 

@@ -39,36 +39,38 @@ def parse_args():
     parser.add_argument('--lang', type=str, help='Language')
     parser.add_argument('--shorthand', type=str, help="Treebank shorthand")
 
-    parser.add_argument('--hidden_dim', type=int, default=400)
-    parser.add_argument('--char_hidden_dim', type=int, default=400)
-    parser.add_argument('--deep_biaff_hidden_dim', type=int, default=400)
-    parser.add_argument('--composite_deep_biaff_hidden_dim', type=int, default=100)
+    parser.add_argument('--hidden_dim', type=int, default=200)
+    parser.add_argument('--char_hidden_dim', type=int, default=200)
+    # parser.add_argument('--deep_biaff_hidden_dim', type=int, default=200)
+    # parser.add_argument('--composite_deep_biaff_hidden_dim', type=int, default=200)
     parser.add_argument('--word_emb_dim', type=int, default=75)
     parser.add_argument('--char_emb_dim', type=int, default=100)
+    parser.add_argument('--output_size', type=int, default=50)
     parser.add_argument('--tag_emb_dim', type=int, default=50)
     parser.add_argument('--transformed_dim', type=int, default=125)
     parser.add_argument('--num_layers', type=int, default=3)
     parser.add_argument('--char_num_layers', type=int, default=1)
     parser.add_argument('--word_dropout', type=float, default=0.33)
     parser.add_argument('--dropout', type=float, default=0.5)
+    parser.add_argument('--subsample_ratio', type=float, default=0.5)
     parser.add_argument('--rec_dropout', type=float, default=0, help="Recurrent dropout")
     parser.add_argument('--char_rec_dropout', type=float, default=0, help="Recurrent dropout")
     parser.add_argument('--no_char', dest='char', action='store_false', help="Turn off character model.")
     parser.add_argument('--no_pretrain', dest='pretrain', action='store_false', help="Turn off pretrained embeddings.")
-    parser.add_argument('--no_linearization', dest='linearization', action='store_false', help="Turn off linearization term.")
-    parser.add_argument('--no_distance', dest='distance', action='store_false', help="Turn off distance term.")
+    parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
+    parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
 
     parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
-    parser.add_argument('--optim', type=str, default='adam', help='sgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
+    parser.add_argument('--optim', type=str, default='rsgd', help='sgd, rsgd, adagrad, adam or adamax.')
+    parser.add_argument('--lr', type=float, default=2e-1, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
 
     parser.add_argument('--max_steps', type=int, default=50000)
-    parser.add_argument('--eval_interval', type=int, default=100)
+    parser.add_argument('--eval_interval', type=int, default=50)
     parser.add_argument('--max_steps_before_stop', type=int, default=3000)
-    parser.add_argument('--batch_size', type=int, default=5000)
+    parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
-    parser.add_argument('--log_step', type=int, default=20, help='Print log every k steps.')
+    parser.add_argument('--log_step', type=int, default=2, help='Print log every k steps.')
     parser.add_argument('--save_dir', type=str, default='saved_models/depparse', help='Root dir for saving models.')
     parser.add_argument('--save_name', type=str, default=None, help="File name to save the model")
 
@@ -92,10 +94,10 @@ def main():
     args = vars(args)
     print("Running parser in {} mode".format(args['mode']))
 
-    if args['mode'] == 'train':
-        train(args)
-    else:
-        evaluate(args)
+    # if args['mode'] == 'train':
+    train(args)
+    # else:
+    #     evaluate(args)
 
 def train(args):
     utils.ensure_dir(args['save_dir'])
@@ -111,14 +113,15 @@ def train(args):
     print("Loading data with batch size {}...".format(args['batch_size']))
     train_batch = DataLoader(args['train_file'], args['batch_size'], args, pretrain, evaluation=False)
     vocab = train_batch.vocab
-    dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
+    # dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
 
     # pred and gold path
     system_pred_file = args['output_file']
     gold_file = args['gold_file']
 
     # skip training if the language does not have training or dev data
-    if len(train_batch) == 0 or len(dev_batch) == 0:
+    # if len(train_batch) == 0 or len(dev_batch) == 0:
+    if len(train_batch) == 0:
         print("Skip training because no data available...")
         sys.exit(0)
 
@@ -142,48 +145,49 @@ def train(args):
         for i, batch in enumerate(train_batch):
             start_time = time.time()
             global_step += 1
-            loss = trainer.update(batch, eval=False) # update step
+            loss, _ = trainer.update(batch, eval=False, subsample=True) # update step
             train_loss += loss
             if global_step % args['log_step'] == 0:
                 duration = time.time() - start_time
+                avg_loss = loss/args['log_step']
                 print(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
-                        max_steps, loss, duration, current_lr))
+                        max_steps, avg_loss, duration, current_lr))
+                
 
             if global_step % args['eval_interval'] == 0:
-                # eval on dev
-                print("Evaluating on dev set...")
-                dev_preds = []
-                for batch in dev_batch:
-                    preds = trainer.predict(batch)
-                    dev_preds += preds
+            #     # eval on dev
+            #     print("Evaluating on dev set...")
+            #     dev_preds = []
+            #     for batch in dev_batch:
+            #         preds = trainer.predict(batch)
+            #         dev_preds += preds
 
-                dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
-                dev_batch.conll.write_conll(system_pred_file)
-                _, _, dev_score = scorer.score(system_pred_file, gold_file)
+            #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
+            #     dev_batch.conll.write_conll(system_pred_file)
+            #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
+                full_loss, edge_acc = trainer.update(batch, eval=False, subsample=False)
+                print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
+            #   train_loss = 0
 
-                train_loss = train_loss / args['eval_interval'] # avg loss per batch
-                print("step {}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, train_loss, dev_score))
-                train_loss = 0
+            #     # save best model
+            #     if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
+            #         last_best_step = global_step
+            #         trainer.save(model_file)
+            #         print("new best model saved.")
+            #         best_dev_preds = dev_preds
 
-                # save best model
-                if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
-                    last_best_step = global_step
-                    trainer.save(model_file)
-                    print("new best model saved.")
-                    best_dev_preds = dev_preds
-
-                dev_score_history += [dev_score]
-                print("")
+            #     dev_score_history += [dev_score]
+            #     print("")
 
             if global_step - last_best_step >= args['max_steps_before_stop']:
-                if not using_amsgrad:
-                    print("Switching to AMSGrad")
-                    last_best_step = global_step
-                    using_amsgrad = True
-                    trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
-                else:
-                    do_break = True
-                    break
+                # if not using_amsgrad:
+                #     print("Switching to AMSGrad")
+                #     last_best_step = global_step
+                #     using_amsgrad = True
+                #     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
+                # else:
+                do_break = True
+                break
 
             if global_step >= args['max_steps']:
                 do_break = True
@@ -195,8 +199,8 @@ def train(args):
 
     print("Training ended with {} steps.".format(global_step))
 
-    best_f, best_eval = max(dev_score_history)*100, np.argmax(dev_score_history)+1
-    print("Best dev F1 = {:.2f}, at iteration = {}".format(best_f, best_eval * args['eval_interval']))
+    # best_f, best_eval = max(dev_score_history)*100, np.argmax(dev_score_history)+1
+    # print("Best dev F1 = {:.2f}, at iteration = {}".format(best_f, best_eval * args['eval_interval']))
 
 def evaluate(args):
     # file paths

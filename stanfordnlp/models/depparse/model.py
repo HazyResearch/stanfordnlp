@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import stanfordnlp.models.depparse.mapping_utils as util
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence, pack_sequence, PackedSequence
 
 from stanfordnlp.models.common.biaffine import DeepBiaffineScorer
@@ -9,6 +10,9 @@ from stanfordnlp.models.common.hlstm import HighwayLSTM
 from stanfordnlp.models.common.dropout import WordDropout
 from stanfordnlp.models.common.vocab import CompositeVocab
 from stanfordnlp.models.common.char_model import CharacterModel
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class Parser(nn.Module):
     def __init__(self, args, vocab, emb_matrix=None, share_hid=False):
@@ -65,22 +69,33 @@ class Parser(nn.Module):
         self.drop_replacement = nn.Parameter(torch.randn(input_size) / np.sqrt(input_size))
         self.parserlstm_h_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         self.parserlstm_c_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
-
+        
+        self.output_size = 100
         # classifiers
-        self.unlabeled = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
-        self.deprel = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], len(vocab['deprel']), pairwise=True, dropout=args['dropout'])
-        if args['linearization']:
-            self.linearization = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
-        if args['distance']:
-            self.distance = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
+
+        self.hypmapping =  nn.Sequential(
+                           nn.Linear(2*self.args['hidden_dim'], 1000).to(device),
+                           nn.ReLU().to(device),
+                           nn.Linear(1000, 100).to(device),
+                           nn.ReLU().to(device),
+                           nn.Linear(100, self.output_size).to(device),
+                           nn.ReLU().to(device))
+
+        # self.scale = nn.Parameter(torch.cuda.FloatTensor([1.0]), requires_grad=True)                  
+        # self.unlabeled = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
+        # self.deprel = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], len(vocab['deprel']), pairwise=True, dropout=args['dropout'])
+        # if args['linearization']:
+        #     self.linearization = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
+        # if args['distance']:
+        #     self.distance = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
 
         # criterion
-        self.crit = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum') # ignore padding
+        # self.crit = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum') # ignore padding
 
         self.drop = nn.Dropout(args['dropout'])
         self.worddrop = WordDropout(args['word_dropout'])
 
-    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens):
+    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, subsample=True):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
@@ -91,8 +106,6 @@ class Parser(nn.Module):
             pretrained_emb = pack(pretrained_emb)
             inputs += [pretrained_emb]
 
-        #def pad(x):
-        #    return pad_packed_sequence(PackedSequence(x, pretrained_emb.batch_sizes), batch_first=True)[0]
 
         if self.args['word_emb_dim'] > 0:
             word_emb = self.word_emb(word)
@@ -123,70 +136,114 @@ class Parser(nn.Module):
             char_reps = PackedSequence(self.trans_char(self.drop(char_reps.data)), char_reps.batch_sizes)
             inputs += [char_reps]
 
+
         lstm_inputs = torch.cat([x.data for x in inputs], 1)
+        # print("inputs", inputs)
 
         lstm_inputs = self.worddrop(lstm_inputs, self.drop_replacement)
         lstm_inputs = self.drop(lstm_inputs)
 
         lstm_inputs = PackedSequence(lstm_inputs, inputs[0].batch_sizes)
+        # print("batch size", inputs[0].batch_sizes)
+        # print("lstm inputs", lstm_inputs)
 
+        # print("word size", word.size(0))
         lstm_outputs, _ = self.parserlstm(lstm_inputs, sentlens, hx=(self.parserlstm_h_init.expand(2 * self.args['num_layers'], word.size(0), self.args['hidden_dim']).contiguous(), self.parserlstm_c_init.expand(2 * self.args['num_layers'], word.size(0), self.args['hidden_dim']).contiguous()))
         lstm_outputs, _ = pad_packed_sequence(lstm_outputs, batch_first=True)
+        lstm_outputs_normalized = torch.zeros(lstm_outputs.shape, device=device)
+        # print("lstm shape", lstm_outputs.shape)
 
-        unlabeled_scores = self.unlabeled(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
-        deprel_scores = self.deprel(self.drop(lstm_outputs), self.drop(lstm_outputs))
+        #This can be done without a for loop.
+        for idx in range(lstm_outputs.shape[0]):
+            embedding = lstm_outputs[idx]
+            norm = embedding.norm(p=2, dim=1, keepdim=True)
+            max_norm = torch.max(norm)+1e-3
+            normalized_emb = embedding.div(max_norm.expand_as(embedding))
+            # print("normalized norm", normalized_emb.norm(p=2, dim=1, keepdim=True))
+            lstm_outputs_normalized[idx] = normalized_emb
+
+        # print("After normalization:", lstm_outputs.shape)
+        
+        lstm_postdrop = self.drop(lstm_outputs_normalized)
+        mapped_vectors = self.hypmapping(lstm_postdrop)
+        # deprel_scores = self.deprel(self.drop(lstm_outputs), self.drop(lstm_outputs))
 
         #goldmask = head.new_zeros(*head.size(), head.size(-1)+1, dtype=torch.uint8)
         #goldmask.scatter_(2, head.unsqueeze(2), 1)
 
-        if self.args['linearization'] or self.args['distance']:
-            head_offset = torch.arange(word.size(1), device=head.device).view(1, 1, -1).expand(word.size(0), -1, -1) - torch.arange(word.size(1), device=head.device).view(1, -1, 1).expand(word.size(0), -1, -1)
+        # if self.args['linearization'] or self.args['distance']:
+        #     head_offset = torch.arange(word.size(1), device=head.device).view(1, 1, -1).expand(word.size(0), -1, -1) - torch.arange(word.size(1), device=head.device).view(1, -1, 1).expand(word.size(0), -1, -1)
 
-        if self.args['linearization']:
-            lin_scores = self.linearization(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
-            unlabeled_scores += F.logsigmoid(lin_scores * torch.sign(head_offset).float()).detach()
+        # if self.args['linearization']:
+        #     lin_scores = self.linearization(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
+        #     unlabeled_scores += F.logsigmoid(lin_scores * torch.sign(head_offset).float()).detach()
 
-        if self.args['distance']:
-            dist_scores = self.distance(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
-            dist_pred = 1 + F.softplus(dist_scores)
-            dist_target = torch.abs(head_offset)
-            dist_kld = -torch.log((dist_target.float() - dist_pred)**2/2 + 1)
-            unlabeled_scores += dist_kld.detach()
+        # if self.args['distance']:
+        #     dist_scores = self.distance(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
+        #     dist_pred = 1 + F.softplus(dist_scores)
+        #     dist_target = torch.abs(head_offset)
+        #     dist_kld = -torch.log((dist_target.float() - dist_pred)**2/2 + 1)
+        #     unlabeled_scores += dist_kld.detach()
 
-        diag = torch.eye(head.size(-1)+1, dtype=torch.uint8, device=head.device).unsqueeze(0)
-        unlabeled_scores.masked_fill_(diag, -float('inf'))
-
+        # diag = torch.eye(head.size(-1)+1, dtype=torch.uint8, device=head.device).unsqueeze(0)
+        # unlabeled_scores.masked_fill_(diag, -float('inf'))
+        # print("target tensor", head)
+        # print("target tensor shape", head.shape)
+        # print("mapped vectors", mapped_vectors.shape)
+        subsample_ratio = 0.1
         preds = []
+        edge_acc = 0.0
 
         if self.training:
-            unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
-            unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
-            unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
-            loss = self.crit(unlabeled_scores.contiguous().view(-1, unlabeled_scores.size(2)), unlabeled_target.view(-1))
+            unlabeled_target = head
+            # print("target shape", unlabeled_target.shape)
+            n = unlabeled_target.shape[1]
+            if subsample:
+                sample_row_num = int(round(n*subsample_ratio))
+                sampled_rows = np.random.permutation(n)[:sample_row_num]
+            else:
+                sampled_rows = list(range(n))
+            
+            # print("sampled rows", sampled_rows)
+            # print("mapped vectors", mapped_vectors.shape)
+            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
+            # print("dist recovered shape", dist_recovered.shape)
+            loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows)
+            if not subsample:
+                dummy = dist_recovered.clone()
+                target_dummy = unlabeled_target.clone()
+                print("Sanity check")
+                test_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), target_dummy.cpu().numpy())
+                print("Edge acc", test_acc)
+                edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
+            # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
+            # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
+            # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
+            # loss = self.crit(unlabeled_scores.contiguous().view(-1, unlabeled_scores.size(2)), unlabeled_target.view(-1))
 
-            deprel_scores = deprel_scores[:, 1:] # exclude attachment for the root symbol
-            #deprel_scores = deprel_scores.masked_select(goldmask.unsqueeze(3)).view(-1, len(self.vocab['deprel']))
-            deprel_scores = torch.gather(deprel_scores, 2, head.unsqueeze(2).unsqueeze(3).expand(-1, -1, -1, len(self.vocab['deprel']))).view(-1, len(self.vocab['deprel']))
-            deprel_target = deprel.masked_fill(word_mask[:, 1:], -1)
-            loss += self.crit(deprel_scores.contiguous(), deprel_target.view(-1))
+            # deprel_scores = deprel_scores[:, 1:] # exclude attachment for the root symbol
+            # #deprel_scores = deprel_scores.masked_select(goldmask.unsqueeze(3)).view(-1, len(self.vocab['deprel']))
+            # deprel_scores = torch.gather(deprel_scores, 2, head.unsqueeze(2).unsqueeze(3).expand(-1, -1, -1, len(self.vocab['deprel']))).view(-1, len(self.vocab['deprel']))
+            # deprel_target = deprel.masked_fill(word_mask[:, 1:], -1)
+            # loss += self.crit(deprel_scores.contiguous(), deprel_target.view(-1))
 
-            if self.args['linearization']:
-                #lin_scores = lin_scores[:, 1:].masked_select(goldmask)
-                lin_scores = torch.gather(lin_scores[:, 1:], 2, head.unsqueeze(2)).view(-1)
-                lin_scores = torch.cat([-lin_scores.unsqueeze(1)/2, lin_scores.unsqueeze(1)/2], 1)
-                #lin_target = (head_offset[:, 1:] > 0).long().masked_select(goldmask)
-                lin_target = torch.gather((head_offset[:, 1:] > 0).long(), 2, head.unsqueeze(2))
-                loss += self.crit(lin_scores.contiguous(), lin_target.view(-1))
+            # if self.args['linearization']:
+            #     #lin_scores = lin_scores[:, 1:].masked_select(goldmask)
+            #     lin_scores = torch.gather(lin_scores[:, 1:], 2, head.unsqueeze(2)).view(-1)
+            #     lin_scores = torch.cat([-lin_scores.unsqueeze(1)/2, lin_scores.unsqueeze(1)/2], 1)
+            #     #lin_target = (head_offset[:, 1:] > 0).long().masked_select(goldmask)
+            #     lin_target = torch.gather((head_offset[:, 1:] > 0).long(), 2, head.unsqueeze(2))
+            #     loss += self.crit(lin_scores.contiguous(), lin_target.view(-1))
 
-            if self.args['distance']:
-                #dist_kld = dist_kld[:, 1:].masked_select(goldmask)
-                dist_kld = torch.gather(dist_kld[:, 1:], 2, head.unsqueeze(2))
-                loss -= dist_kld.sum()
+            # if self.args['distance']:
+            #     #dist_kld = dist_kld[:, 1:].masked_select(goldmask)
+            #     dist_kld = torch.gather(dist_kld[:, 1:], 2, head.unsqueeze(2))
+            #     loss -= dist_kld.sum()
 
-            loss /= wordchars.size(0) # number of words
+            # loss /= wordchars.size(0) # number of words
         else:
             loss = 0
-            preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
-            preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
+            # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
+            # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 
-        return loss, preds
+        return loss, preds, edge_acc

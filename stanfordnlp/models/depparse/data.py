@@ -1,5 +1,11 @@
 import random
 import torch
+from conllu import parse_tree, parse_tree_incr, parse, parse_incr
+import networkx as nx
+import scipy
+import scipy.sparse.csgraph as csg
+import stanfordnlp.models.depparse.mapping_utils as util
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 from stanfordnlp.models.common.data import map_to_ids, get_long_tensor, get_float_tensor, sort_all
 from stanfordnlp.models.common import conll
@@ -16,13 +22,13 @@ class DataLoader:
         self.args = args
         self.eval = evaluation
         self.shuffled = not self.eval
-
         # check if input source is a file or a Document object
         if isinstance(input_src, str):
             filename = input_src
             assert filename.endswith('conllu'), "Loaded file must be conllu file."
             self.conll, data = self.load_file(filename, evaluation=self.eval)
         elif isinstance(input_src, Document):
+            print("it's a document")
             filename = None
             doc = input_src
             self.conll, data = self.load_doc(doc)
@@ -37,13 +43,15 @@ class DataLoader:
         # filter and sample data
         if args.get('sample_train', 1.0) < 1.0 and not self.eval:
             keep = int(args['sample_train'] * len(data))
-            data = random.sample(data, keep)
+            data = data[:keep]
             print("Subsample training set with rate {:g}".format(args['sample_train']))
 
-        data = self.preprocess(data, self.vocab, self.pretrain_vocab, args)
+        data = self.preprocess(input_src, data, self.vocab, self.pretrain_vocab, args)
+
         # shuffle for training
-        if self.shuffled:
-            random.shuffle(data)
+        # if self.shuffled:
+        #     random.shuffle(data)
+
         self.num_examples = len(data)
 
         # chunk into batches
@@ -69,21 +77,50 @@ class DataLoader:
                             'deprel': deprelvocab})
         return vocab
 
-    def preprocess(self, data, vocab, pretrain_vocab, args):
+    #I got rid of ROOT_IDs.
+    def preprocess(self, doc, data, vocab, pretrain_vocab, args):
         processed = []
+        data_file = open(doc, "r", encoding="utf-8")
         xpos_replacement = [[ROOT_ID] * len(vocab['xpos'])] if isinstance(vocab['xpos'], CompositeVocab) else [ROOT_ID]
         feats_replacement = [[ROOT_ID] * len(vocab['feats'])]
+        i = 0
         for sent in data:
-            processed_sent = [[ROOT_ID] + vocab['word'].map([w[0] for w in sent])]
-            processed_sent += [[[ROOT_ID]] + [vocab['char'].map([x for x in w[0]]) for w in sent]]
-            processed_sent += [[ROOT_ID] + vocab['upos'].map([w[1] for w in sent])]
-            processed_sent += [xpos_replacement + vocab['xpos'].map([w[2] for w in sent])]
-            processed_sent += [feats_replacement + vocab['feats'].map([w[3] for w in sent])]
-            processed_sent += [[ROOT_ID] + pretrain_vocab.map([w[0] for w in sent])]
-            processed_sent += [[ROOT_ID] + vocab['lemma'].map([w[4] for w in sent])]
-            processed_sent += [[to_int(w[5], ignore_error=self.eval) for w in sent]]
+            processed_sent = [vocab['word'].map([w[0] for w in sent])]
+            processed_sent += [[vocab['char'].map([x for x in w[0]]) for w in sent]]
+            processed_sent += [vocab['upos'].map([w[1] for w in sent])]
+            processed_sent += [vocab['xpos'].map([w[2] for w in sent])]
+            processed_sent += [vocab['feats'].map([w[3] for w in sent])]
+            processed_sent += [pretrain_vocab.map([w[0] for w in sent])]
+            processed_sent += [vocab['lemma'].map([w[4] for w in sent])]
+            head = [[int(w[5]) for w in sent]]
+            processed_sent += head
             processed_sent += [vocab['deprel'].map([w[6] for w in sent])]
             processed.append(processed_sent)
+            i+=1
+
+        idx = 0
+        problem_idx = []
+        for sentence in parse_incr(data_file):
+            if idx < len(data):
+                curr_tree = sentence.to_tree()
+                # print("curr tree", curr_tree)
+                G_curr = nx.Graph()
+                G_curr = util.unroll(curr_tree, G_curr)
+                if len(G_curr) != 0:
+                    G = nx.relabel_nodes(G_curr, lambda x: x-1)
+                    target_matrix = util.get_dist_mat(G)
+                    target_tensor = torch.from_numpy(target_matrix).float()
+                    target_tensor.requires_grad = False
+                    processed[idx][7] = target_tensor
+                elif len(G_curr) == 0:
+                    problem_idx.append(idx)
+                idx += 1
+            else:
+                break
+        
+        for i in problem_idx:
+            del processed[i]
+
         return processed
 
     def __len__(self):
@@ -97,6 +134,7 @@ class DataLoader:
             raise IndexError
         batch = self.data[key]
         batch_size = len(batch)
+        # print("batch size", batch_size)
         batch = list(zip(*batch))
         assert len(batch) == 9
 
@@ -124,7 +162,18 @@ class DataLoader:
         pretrained = get_long_tensor(batch[5], batch_size)
         sentlens = [len(x) for x in batch[0]]
         lemma = get_long_tensor(batch[6], batch_size)
-        head = get_long_tensor(batch[7], batch_size)
+        max_tensor = batch[7][0]
+        to_stack = [max_tensor]
+        # print("batch[7] shape", len(batch[7]))
+        for b in range(1, batch_size):
+            new = torch.zeros(max_tensor.shape)
+            curr = batch[7][b]
+            new[:(curr.shape[0]), :curr.shape[1]] = curr
+            to_stack.append(new)
+        head = torch.stack(to_stack)
+        # print("batch size", batch_size)
+        # print("head shape", head.shape)
+        # print("lemma shape", lemma.shape)
         deprel = get_long_tensor(batch[8], batch_size)
         return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, orig_idx, word_orig_idx, sentlens, word_lens
 
@@ -138,7 +187,7 @@ class DataLoader:
         return doc.conll_file, data
 
     def __iter__(self):
-        for i in range(self.__len__()):
+        for i in range(1, self.__len__()):
             yield self.__getitem__(i)
 
     def reshuffle(self):
@@ -167,13 +216,3 @@ class DataLoader:
             res.append(current)
 
         return res
-
-def to_int(string, ignore_error=False):
-    try:
-        res = int(string)
-    except ValueError as err:
-        if ignore_error:
-            return 0
-        else:
-            raise err
-    return res
