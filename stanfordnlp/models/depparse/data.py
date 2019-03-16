@@ -192,7 +192,7 @@ class DataLoader:
         return doc.conll_file, data
 
     def __iter__(self):
-        for i in range(1, self.__len__()):
+        for i in range(self.__len__()):
             yield self.__getitem__(i)
 
     def reshuffle(self):

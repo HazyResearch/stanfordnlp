@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
 
-    parser.add_argument('--sample_train', type=float, default=0.001, help='Subsample training data.')
+    parser.add_argument('--sample_train', type=float, default=0.0001, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='rsgd', help='sgd, rsgd, adagrad, adam or adamax.')
     parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
@@ -125,6 +125,7 @@ def train(args):
         sys.exit(0)
 
     current_lr = args['lr']
+    scale_lr = current_lr
     print("Training parser...")
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
     print("optimizer:", trainer.optimizer)
@@ -142,7 +143,7 @@ def train(args):
     train_loss = 0
     for i, batch in enumerate(train_batch):
         do_break = False
-        for iter in range(100):
+        for iter in range(5000):
             start_time = time.time()
             global_step += 1
             loss, _ = trainer.update(batch, eval=False, subsample=True) # update step
@@ -171,8 +172,9 @@ def train(args):
 
             if global_step % 200 == 0:
                 current_lr *= 0.5
+                scale_lr *= 0.5
                 trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
-
+                trainer.scale_optimizer = torch.optim.SGD([trainer.scale], lr=scale_lr)
             #     # save best model
             #     if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
             #         last_best_step = global_step
@@ -199,7 +201,7 @@ def train(args):
 
         if do_break: break
 
-        # train_batch.reshuffle()
+        train_batch.reshuffle()
 
     print("Training ended with {} steps.".format(global_step))
 

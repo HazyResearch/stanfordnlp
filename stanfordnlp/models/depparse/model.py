@@ -191,7 +191,7 @@ class Parser(nn.Module):
         # print("target tensor shape", head.shape)
         # print("mapped vectors", mapped_vectors.shape)
         subsample_ratio = 1.0
-        print("subsample ratio", subsample ratio)
+        # print("subsample ratio", subsample_ratio)
         preds = []
         edge_acc = 0.0
 
