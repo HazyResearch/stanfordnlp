@@ -12,6 +12,7 @@ __pycache__/
 
 data/
 saved_models/
+training_englishewt/
 logs/
 *_test_treebanks
 
