@@ -70,7 +70,7 @@ class Parser(nn.Module):
         self.parserlstm_h_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         self.parserlstm_c_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         
-        self.output_size = 100
+        self.output_size = 400
         # classifiers
 
         self.hypmapping =  nn.Sequential(
@@ -190,7 +190,8 @@ class Parser(nn.Module):
         # print("target tensor", head)
         # print("target tensor shape", head.shape)
         # print("mapped vectors", mapped_vectors.shape)
-        subsample_ratio = 0.1
+        subsample_ratio = 1.0
+        print("subsample ratio", subsample ratio)
         preds = []
         edge_acc = 0.0
 

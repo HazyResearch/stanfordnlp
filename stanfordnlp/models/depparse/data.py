@@ -4,6 +4,7 @@ from conllu import parse_tree, parse_tree_incr, parse, parse_incr
 import networkx as nx
 import scipy
 import scipy.sparse.csgraph as csg
+import numpy as np
 import stanfordnlp.models.depparse.mapping_utils as util
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -98,12 +99,12 @@ class DataLoader:
             processed.append(processed_sent)
             i+=1
 
+        print("length of data", len(data))
         idx = 0
         problem_idx = []
         for sentence in parse_incr(data_file):
-            if idx < len(data):
+            if idx < len(data):                    
                 curr_tree = sentence.to_tree()
-                # print("curr tree", curr_tree)
                 G_curr = nx.Graph()
                 G_curr = util.unroll(curr_tree, G_curr)
                 if len(G_curr) != 0:
@@ -118,10 +119,13 @@ class DataLoader:
             else:
                 break
         
-        for i in problem_idx:
-            del processed[i]
-
-        return processed
+        print("problem idx", problem_idx)
+        final_processed = []
+        for i, item in enumerate(processed):
+            if not isinstance(item[7],list) and i not in problem_idx:
+                final_processed.append(item)
+        print("length of final processed", len(final_processed))
+        return final_processed
 
     def __len__(self):
         return len(self.data)
@@ -162,6 +166,7 @@ class DataLoader:
         pretrained = get_long_tensor(batch[5], batch_size)
         sentlens = [len(x) for x in batch[0]]
         lemma = get_long_tensor(batch[6], batch_size)
+        
         max_tensor = batch[7][0]
         to_stack = [max_tensor]
         # print("batch[7] shape", len(batch[7]))

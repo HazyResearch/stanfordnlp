@@ -39,19 +39,19 @@ def parse_args():
     parser.add_argument('--lang', type=str, help='Language')
     parser.add_argument('--shorthand', type=str, help="Treebank shorthand")
 
-    parser.add_argument('--hidden_dim', type=int, default=200)
-    parser.add_argument('--char_hidden_dim', type=int, default=200)
+    parser.add_argument('--hidden_dim', type=int, default=400)
+    parser.add_argument('--char_hidden_dim', type=int, default=400)
     # parser.add_argument('--deep_biaff_hidden_dim', type=int, default=200)
     # parser.add_argument('--composite_deep_biaff_hidden_dim', type=int, default=200)
     parser.add_argument('--word_emb_dim', type=int, default=75)
     parser.add_argument('--char_emb_dim', type=int, default=100)
-    parser.add_argument('--output_size', type=int, default=50)
+    parser.add_argument('--output_size', type=int, default=400)
     parser.add_argument('--tag_emb_dim', type=int, default=50)
     parser.add_argument('--transformed_dim', type=int, default=125)
     parser.add_argument('--num_layers', type=int, default=3)
     parser.add_argument('--char_num_layers', type=int, default=1)
-    parser.add_argument('--word_dropout', type=float, default=0.33)
-    parser.add_argument('--dropout', type=float, default=0.5)
+    parser.add_argument('--word_dropout', type=float, default=0.0)
+    parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--subsample_ratio', type=float, default=0.5)
     parser.add_argument('--rec_dropout', type=float, default=0, help="Recurrent dropout")
     parser.add_argument('--char_rec_dropout', type=float, default=0, help="Recurrent dropout")
@@ -60,14 +60,13 @@ def parse_args():
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
 
-    parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
+    parser.add_argument('--sample_train', type=float, default=0.001, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='rsgd', help='sgd, rsgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=2e-1, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
-
     parser.add_argument('--max_steps', type=int, default=50000)
     parser.add_argument('--eval_interval', type=int, default=50)
-    parser.add_argument('--max_steps_before_stop', type=int, default=3000)
+    parser.add_argument('--max_steps_before_stop', type=int, default=30000)
     parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
     parser.add_argument('--log_step', type=int, default=2, help='Print log every k steps.')
@@ -125,14 +124,15 @@ def train(args):
         print("Skip training because no data available...")
         sys.exit(0)
 
+    current_lr = args['lr']
     print("Training parser...")
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
-
+    print("optimizer:", trainer.optimizer)
+    print("scale optimizer:", trainer.scale_optimizer)
     global_step = 0
     max_steps = args['max_steps']
     dev_score_history = []
     best_dev_preds = []
-    current_lr = args['lr']
     global_start_time = time.time()
     format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
@@ -140,9 +140,9 @@ def train(args):
     last_best_step = 0
     # start training
     train_loss = 0
-    while True:
+    for i, batch in enumerate(train_batch):
         do_break = False
-        for i, batch in enumerate(train_batch):
+        for iter in range(100):
             start_time = time.time()
             global_step += 1
             loss, _ = trainer.update(batch, eval=False, subsample=True) # update step
@@ -168,6 +168,10 @@ def train(args):
                 full_loss, edge_acc = trainer.update(batch, eval=False, subsample=False)
                 print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
             #   train_loss = 0
+
+            if global_step % 200 == 0:
+                current_lr *= 0.5
+                trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
 
             #     # save best model
             #     if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
@@ -195,7 +199,7 @@ def train(args):
 
         if do_break: break
 
-        train_batch.reshuffle()
+        # train_batch.reshuffle()
 
     print("Training ended with {} steps.".format(global_step))
 
