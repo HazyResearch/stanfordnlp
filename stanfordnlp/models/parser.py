@@ -49,10 +49,10 @@ def parse_args():
     parser.add_argument('--output_size', type=int, default=400)
     parser.add_argument('--tag_emb_dim', type=int, default=50)
     parser.add_argument('--transformed_dim', type=int, default=125)
-    parser.add_argument('--num_layers', type=int, default=4)
+    parser.add_argument('--num_layers', type=int, default=3)
     parser.add_argument('--char_num_layers', type=int, default=1)
-    parser.add_argument('--word_dropout', type=float, default=0.3)
-    parser.add_argument('--dropout', type=float, default=0.3)
+    parser.add_argument('--word_dropout', type=float, default=0.0)
+    parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--subsample_ratio', type=float, default=0.5)
     parser.add_argument('--rec_dropout', type=float, default=0, help="Recurrent dropout")
     parser.add_argument('--char_rec_dropout', type=float, default=0, help="Recurrent dropout")
@@ -184,10 +184,10 @@ def train(args):
                 print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
                 logging.info("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
                 print("Dev accuracy", dev_acc_total)
-                logging.info("Dev accuracy", dev_acc_total)
+                logging.info("step {}: Dev acc. = {:.6f}".format(global_step, dev_acc_total))
             # train_loss = 0
 
-            if global_step % 200 == 0:
+            if (global_step % 200 == 0) and current_lr>1e-4:
                 current_lr *= 0.5
                 scale_lr *= 0.5
                 trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
