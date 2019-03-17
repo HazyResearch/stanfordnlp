@@ -15,6 +15,6 @@ saved_models/
 training_englishewt/
 logs/
 *_test_treebanks
-
+logparsing
 params/*/*.json
 !params/*/default.json
