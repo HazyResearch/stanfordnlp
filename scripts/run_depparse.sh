@@ -23,7 +23,7 @@ if [ ! -e $train_file ]; then
 fi
 
 # handle languages that need reduced batch size
-batch_size=50
+batch_size=10
 
 if [ $treebank == 'UD_Finnish-TDT' ] || [ $treebank == 'UD_Russian-Taiga' ] || [ $treebank == 'UD_Latvian-LVTB' ] \
     || [ $treebank == 'UD_Croatian-SET' ] || [ $treebank == 'UD_Galician-TreeGal' ]; then

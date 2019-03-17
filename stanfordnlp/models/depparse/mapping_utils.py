@@ -313,9 +313,6 @@ def compare_mst_batch(target_batch, hrec_batch):
     return batch_acc/batch_size
 
 
-G = nx.Graph()
-G.add_edge(0,1)
-G.add_edge(1,2)
 
 
 

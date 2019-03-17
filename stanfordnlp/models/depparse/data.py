@@ -20,9 +20,12 @@ class DataLoader:
 
     def __init__(self, input_src, batch_size, args, pretrain, vocab=None, evaluation=False):
         self.batch_size = batch_size
+        print("We are entering data loader")
+        print("batch size should be", batch_size)
+        sample_dev_ratio = 0.1
         self.args = args
         self.eval = evaluation
-        self.shuffled = not self.eval
+        # self.shuffled = not self.eval
         # check if input source is a file or a Document object
         if isinstance(input_src, str):
             filename = input_src
@@ -47,15 +50,21 @@ class DataLoader:
             data = data[:keep]
             print("Subsample training set with rate {:g}".format(args['sample_train']))
 
-        data = self.preprocess(input_src, data, self.vocab, self.pretrain_vocab, args)
+        if sample_dev_ratio < 1.0 and self.eval:
+            keep = int(sample_dev_ratio * len(data))
+            data = data[:keep]
+            print("Subsample dev set with rate {:g}".format(sample_dev_ratio))
 
+        data = self.preprocess(input_src, data, self.vocab, self.pretrain_vocab, args)
+        
         # shuffle for training
-        # if self.shuffled:
-        #     random.shuffle(data)
+        #if self.shuffled:
+            #random.shuffle(data)
 
         self.num_examples = len(data)
-
+        print("length of the data", self.num_examples)
         # chunk into batches
+        print("Entering to chunk into batches")
         self.data = self.chunk_batches(data)
         if filename is not None:
             print("{} batches created for {}.".format(len(self.data), filename))
@@ -140,7 +149,7 @@ class DataLoader:
         batch_size = len(batch)
         # print("batch size", batch_size)
         batch = list(zip(*batch))
-        assert len(batch) == 9
+        #assert len(batch) == 9
 
         # sort sentences by lens for easy RNN operations
         lens = [len(x) for x in batch[0]]
@@ -198,10 +207,10 @@ class DataLoader:
     def reshuffle(self):
         data = [y for x in self.data for y in x]
         self.data = self.chunk_batches(data)
-        random.shuffle(self.data)
+        random.shuffle(data)
 
     def chunk_batches(self, data):
-        res = []
+        # res = []
 
         if not self.eval:
             # sort sentences (roughly) by length for better memory utilization
@@ -209,15 +218,35 @@ class DataLoader:
 
         current = []
         currentlen = 0
+        # idx = 0 
+        totallen = 0
+        batches = []
         for x in data:
-            if len(x[0]) + currentlen > self.batch_size:
-                res.append(current)
-                current = []
-                currentlen = 0
-            current.append(x)
-            currentlen += len(x[0])
+            if currentlen < self.batch_size:
+                current.append(x)
+                currentlen += 1
+                totallen += 1
+            else:
+ 
+                batches.append(current)
+                current = [x]
+                currentlen = 1
+                totallen += 1
 
-        if currentlen > 0:
-            res.append(current)
+        if totallen == len(data):
+            batches.append(current)
+            # print("data point", x)
+            # print("data point length", x[0])
+            # if len(x[0]) + currentlen > self.batch_size:
+            #     res.append(current)
+            #     current = []
+            #     currentlen = 0
+            # current.append(x)
+            # currentlen += len(x[0])
+        #     print("current len", currentlen)
+        # print("length of current", len(current))
+        # if currentlen > 0:
+        #     res.append(current)
 
-        return res
+        print("length of batches", len(batches))
+        return batches

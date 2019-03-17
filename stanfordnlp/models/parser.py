@@ -15,6 +15,7 @@ import shutil
 import time
 from datetime import datetime
 import argparse
+import logging
 import numpy as np
 import random
 import torch
@@ -48,10 +49,10 @@ def parse_args():
     parser.add_argument('--output_size', type=int, default=400)
     parser.add_argument('--tag_emb_dim', type=int, default=50)
     parser.add_argument('--transformed_dim', type=int, default=125)
-    parser.add_argument('--num_layers', type=int, default=3)
+    parser.add_argument('--num_layers', type=int, default=4)
     parser.add_argument('--char_num_layers', type=int, default=1)
-    parser.add_argument('--word_dropout', type=float, default=0.0)
-    parser.add_argument('--dropout', type=float, default=0.0)
+    parser.add_argument('--word_dropout', type=float, default=0.3)
+    parser.add_argument('--dropout', type=float, default=0.3)
     parser.add_argument('--subsample_ratio', type=float, default=0.5)
     parser.add_argument('--rec_dropout', type=float, default=0, help="Recurrent dropout")
     parser.add_argument('--char_rec_dropout', type=float, default=0, help="Recurrent dropout")
@@ -59,13 +60,13 @@ def parse_args():
     parser.add_argument('--no_pretrain', dest='pretrain', action='store_false', help="Turn off pretrained embeddings.")
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
-
-    parser.add_argument('--sample_train', type=float, default=0.0001, help='Subsample training data.')
+    parser.add_argument('--sample_dev', type=float, default=0.1, help='Subsample dev data.')
+    parser.add_argument('--sample_train', type=float, default=0.083, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='rsgd', help='sgd, rsgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1.0, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
     parser.add_argument('--max_steps', type=int, default=50000)
-    parser.add_argument('--eval_interval', type=int, default=50)
+    parser.add_argument('--eval_interval', type=int, default=100)
     parser.add_argument('--max_steps_before_stop', type=int, default=30000)
     parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
@@ -90,6 +91,16 @@ def main():
     elif args.cuda:
         torch.cuda.manual_seed(args.seed)
 
+    formatter = logging.Formatter('%(asctime)s %(message)s')
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(message)s',
+                        datefmt='%FT%T',)
+    logging.info(f"Logging")
+    log = logging.getLogger()
+    fh  = logging.FileHandler("logparsing")
+    fh.setFormatter(formatter)
+    log.addHandler(fh)
+
     args = vars(args)
     print("Running parser in {} mode".format(args['mode']))
 
@@ -112,7 +123,7 @@ def train(args):
     print("Loading data with batch size {}...".format(args['batch_size']))
     train_batch = DataLoader(args['train_file'], args['batch_size'], args, pretrain, evaluation=False)
     vocab = train_batch.vocab
-    # dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
+    dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
 
     # pred and gold path
     system_pred_file = args['output_file']
@@ -137,38 +148,44 @@ def train(args):
     global_start_time = time.time()
     format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
 
-    using_amsgrad = False
     last_best_step = 0
     # start training
     train_loss = 0
-    for i, batch in enumerate(train_batch):
+    while True:
         do_break = False
-        for iter in range(5000):
+        for i, batch in enumerate(train_batch):
             start_time = time.time()
             global_step += 1
             loss, _ = trainer.update(batch, eval=False, subsample=True) # update step
             train_loss += loss
-            if global_step % args['log_step'] == 0:
-                duration = time.time() - start_time
-                avg_loss = loss/args['log_step']
-                print(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
-                        max_steps, avg_loss, duration, current_lr))
+            # if global_step % args['log_step'] == 0:
+            duration = time.time() - start_time
+            avg_loss = loss/args['log_step']
+            print(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
+                    max_steps, avg_loss, duration, current_lr))
+            logging.info(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
+                    max_steps, avg_loss, duration, current_lr))
                 
 
             if global_step % args['eval_interval'] == 0:
             #     # eval on dev
             #     print("Evaluating on dev set...")
-            #     dev_preds = []
-            #     for batch in dev_batch:
-            #         preds = trainer.predict(batch)
-            #         dev_preds += preds
+                dev_acc_total = 0
+                for batch in dev_batch:
+                    dev_acc = trainer.predict(batch)
+                    dev_acc_total += dev_acc
+
 
             #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
             #     dev_batch.conll.write_conll(system_pred_file)
             #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
                 full_loss, edge_acc = trainer.update(batch, eval=False, subsample=False)
+                dev_acc_total /= len(dev_batch)
                 print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
-            #   train_loss = 0
+                logging.info("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
+                print("Dev accuracy", dev_acc_total)
+                logging.info("Dev accuracy", dev_acc_total)
+            # train_loss = 0
 
             if global_step % 200 == 0:
                 current_lr *= 0.5
@@ -200,7 +217,7 @@ def train(args):
                 break
 
         if do_break: break
-
+        print("Reshuffling now")
         train_batch.reshuffle()
 
     print("Training ended with {} steps.".format(global_step))

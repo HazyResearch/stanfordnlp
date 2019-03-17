@@ -213,9 +213,6 @@ class Parser(nn.Module):
             if not subsample:
                 dummy = dist_recovered.clone()
                 target_dummy = unlabeled_target.clone()
-                print("Sanity check")
-                test_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), target_dummy.cpu().numpy())
-                print("Edge acc", test_acc)
                 edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
             # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
@@ -244,6 +241,18 @@ class Parser(nn.Module):
             # loss /= wordchars.size(0) # number of words
         else:
             loss = 0
+            unlabeled_target = head
+            # print("target shape", unlabeled_target.shape)
+            n = unlabeled_target.shape[1]
+            sampled_rows = list(range(n))
+            
+            # print("sampled rows", sampled_rows)
+            # print("mapped vectors", mapped_vectors.shape)
+            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
+            # print("dist recovered shape", dist_recovered.shape)            
+            dummy = dist_recovered.clone()
+            target_dummy = unlabeled_target.clone()
+            edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 
