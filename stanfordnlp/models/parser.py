@@ -97,7 +97,7 @@ def main():
                         datefmt='%FT%T',)
     logging.info(f"Logging")
     log = logging.getLogger()
-    fh  = logging.FileHandler("logparsingdawn")
+    fh  = logging.FileHandler("logparsing")
     fh.setFormatter(formatter)
     log.addHandler(fh)
 
