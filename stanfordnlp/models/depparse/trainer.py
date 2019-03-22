@@ -39,12 +39,20 @@ class Trainer(BaseTrainer):
             self.args = args
             self.vocab = vocab
             self.model = Parser(args, vocab, emb_matrix=pretrain.emb)
-        self.parameters = [p for p in self.model.parameters() if p.requires_grad]
+        # self.parameters = [p for p in self.model.parameters() if p.requires_grad]
+        self.parameters = []
+        for module in self.model.modules():
+            if module != self.model.hypmapping:
+                for param in module.parameters():
+                    if param.requires_grad:
+                        self.parameters.append(param)
+        
         if self.use_cuda:
             self.model.cuda()
         else:
             self.model.cpu()
-        self.optimizer = utils.get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
+        self.optimizer = utils.get_optimizer(self.args['optim'], self.parameters, self.args['lr'])
+        self.mapping_optimizer = utils.get_optimizer('rsgd', self.model.hypmapping.parameters(), self.args['lr'])
         self.scale_optimizer = torch.optim.SGD([self.scale], lr=self.args['lr'])
     
     def update(self, batch, eval=False, subsample=True):
@@ -56,6 +64,7 @@ class Trainer(BaseTrainer):
         else:
             self.model.train()
             self.optimizer.zero_grad()
+            self.mapping_optimizer.zero_grad()
             self.scale_optimizer.zero_grad()
         if subsample:
             loss, _, _ = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, True)
@@ -69,6 +78,7 @@ class Trainer(BaseTrainer):
         loss.backward(retain_graph=True)
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args['max_grad_norm'])
         self.optimizer.step()
+        self.mapping_optimizer.step()
         self.scale_optimizer.step()
         return loss_val, 0.0
 
