@@ -70,7 +70,7 @@ class Parser(nn.Module):
         self.parserlstm_h_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         self.parserlstm_c_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         
-        self.output_size = 400
+        self.output_size = 100
         # classifiers
 
         self.hypmapping =  nn.Sequential(

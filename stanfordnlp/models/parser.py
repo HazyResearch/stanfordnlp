@@ -63,7 +63,7 @@ def parse_args():
     parser.add_argument('--sample_dev', type=float, default=0.1, help='Subsample dev data.')
     parser.add_argument('--sample_train', type=float, default=0.0001, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='sgd', help='sgd, rsgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=0.1, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
     parser.add_argument('--max_steps', type=int, default=50000)
     parser.add_argument('--eval_interval', type=int, default=10)
