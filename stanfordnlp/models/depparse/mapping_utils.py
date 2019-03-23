@@ -78,7 +78,8 @@ def distance_matrix_hyperbolic(input, sampled_rows, scale):
             if i != row:
                 dist_mat[idx, i] = dist_p(input[row,:], input[i,:])*scale
         idx += 1
-    # print("Distance matrix", dist_mat)
+    #print("Distance matrix", dist_mat)
+    #print()
     return dist_mat
 
 def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
@@ -95,7 +96,7 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
             if i != row:
                 dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
-    # print("Distance matrix", dist_mat)
+    #print("Distance matrix", dist_mat)
     return dist_mat
 
 def distance_matrix_hyperbolic_parsing(input_length, input, sampled_rows, scale):
@@ -124,6 +125,9 @@ def entry_is_good(h, h_rec): return (not torch.isnan(h_rec)) and (not torch.isin
 
 def distortion_entry(h,h_rec):
     avg = abs(h_rec - h)/h
+    avg += abs(h - h_rec)/h_rec
+    avg /= 2
+
     return avg
 
 def distortion_row(H1, H2, n, row):
@@ -155,6 +159,11 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
 
 
 def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
+    #print("First one\n")
+    #print(H1)
+    #print("Second one\n")
+    #print(H2)
+
     # dists = Parallel(n_jobs=jobs)(delayed(distortion_row)(H1[i,:],H2[i,:],n,i) for i in range(n))
     # print(H1.shape) #target
     # print(H2.shape) #recovered
@@ -163,8 +172,13 @@ def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
     for b in range(batch_size):
         i=0
         for row in sampled_rows:
-        #     print(H1[b,i,:].shape)
-        #     print(H2[b,row,:].shape)
+            '''print("on row ", row) 
+            print()
+            print("true")
+            print(H1[b,row,:])
+            print("ours")
+            print(H2[b,i,:])
+            print()'''
             dists[b,i] = distortion_row(H1[b,row,:], H2[b,i,:], n, row)[0]
             i += 1
 
@@ -260,6 +274,8 @@ def showPlot(points):
 def pairfromidx(idx, edge_folder):
     G = load_graph(edge_folder+str(idx)+".edges")
     target_matrix = get_dist_mat(G)
+    '''print("target matrix = ", target_matrix)
+    print()'''
     target_tensor = torch.from_numpy(target_matrix).float().to(device)
     target_tensor.requires_grad = False
     n = G.order()

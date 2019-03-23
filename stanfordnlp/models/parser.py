@@ -61,7 +61,7 @@ def parse_args():
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
     parser.add_argument('--sample_dev', type=float, default=0.1, help='Subsample dev data.')
-    parser.add_argument('--sample_train', type=float, default=0.0001, help='Subsample training data.')
+    parser.add_argument('--sample_train', type=float, default=0.01, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='sgd', help='sgd, rsgd, adagrad, adam or adamax.')
     parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
@@ -187,7 +187,7 @@ def train(args):
                     # logging.info("step {}: Dev acc. = {:.6f}".format(global_step, dev_acc_total))
                 # train_loss = 0
 
-                if (global_step % 300 == 0) and current_lr>1e-5:
+                if (global_step % 1000 == 0) and current_lr>1e-5:
                     current_lr *= 0.5
                     scale_lr *= 0.5
                     trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
