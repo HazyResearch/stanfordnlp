@@ -428,7 +428,6 @@ def evaluate(gold_ud, system_ud):
                     gi += 1
                 else:
                     si += 1
-
         return alignment
 
     # Check that the underlying character sequences do match.

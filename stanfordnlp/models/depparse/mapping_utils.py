@@ -319,18 +319,100 @@ def compare_mst_batch(target_batch, hrec_batch):
         mst = csg.minimum_spanning_tree(hrec)
         G_rec = nx.from_scipy_sparse_matrix(mst)
         mst_target = csg.minimum_spanning_tree(target)
-        G= nx.from_scipy_sparse_matrix(mst_target)
-        found = 0
+        G = nx.from_scipy_sparse_matrix(mst_target)
+        found = 1
         for edge in G_rec.edges():
             if edge in G.edges(): found+= 1
 
-        acc = found / len(list(G.edges()))
+        acc = found / (len(list(G.edges()))+1)
         batch_acc += acc
     return batch_acc/batch_size
 
+def get_heads(G, head_dict, node_list):
+    if len(list(G.edges())) !=0:
+        for i,j in list(G.edges()):
+            if G.degree(i) == 1:
+                head_dict[i] = j
+                G.remove_edge(i,j)
+                node_list.remove(i)
+            elif G.degree(j) == 1:
+                head_dict[j] = i
+                G.remove_edge(i,j)
+                node_list.remove(j)
+        get_heads(G, head_dict, node_list)
+    else:
+        root = node_list[0]
+        head_dict[root] = 'root'
+    return G, head_dict, node_list
+
+def get_heads_batch(hrec_batch):
+
+    batch_size = hrec_batch.shape[0]
+    preds = []
+    rel = 'obj'
+
+    for b in range(batch_size):
+        hrec = hrec_batch[b,:,:]
+        mst = csg.minimum_spanning_tree(hrec)
+        G = nx.from_scipy_sparse_matrix(mst)
+        seq = []
+        head_dict = {}
+        node_list = [n for n in list(G.nodes()) if G.degree(n) > 0]
+        if len(node_list) !=0:
+            _, head_dict, _ = get_heads(G, head_dict, node_list)
+        else:
+            head_dict[0] = 'root'
+
+        keylist = head_dict.keys()
+        keylist = sorted(keylist)
+        for key in keylist:
+            # print(key, seq)
+            if head_dict[key] == 'root':
+                seq.append(['0', 'root'])
+            else:
+                seq.append([str(head_dict[key]+1), rel])
+        root_num = 0
+        for head, deprel in seq:
+            if deprel == 'root':
+                root_num += 1
+        if root_num != 1:
+            print("Num of root", root_num)
+            print(seq)
+
+        preds += [seq]
+
+    return preds
 
 
+def predict_batch(target_batch, hrec_batch):
 
+    batch_size = hrec_batch.shape[0]
+    node_system = 0
+    node_gold = 0
+    correct_heads = 0
+    batch_acc = 0
+    f1_total = 0
+    for i in range(batch_size):
+        hrec = hrec_batch[i,:,:]
+        target = target_batch[i,:,:]
+        mst = csg.minimum_spanning_tree(hrec)
+        G_rec = nx.from_scipy_sparse_matrix(mst)
+        mst_target = csg.minimum_spanning_tree(target)
+        G = nx.from_scipy_sparse_matrix(mst_target)
+        node_system += len(list(G_rec.nodes()))
+        node_gold += len(list(G.nodes()))
+        found = 1
+        for edge in G_rec.edges():
+            if edge in G.edges(): found+= 1
+        correct_heads = correct_heads + found
+        acc = found / (len(list(G.edges()))+1)
+        recall = acc
+        precision = found / (len(list(G_rec.edges()))+1)
+        f1 = 2*precision*recall/(precision+recall)
+        batch_acc += acc
+        f1_total += f1
+    batch_acc /= batch_size
+    return batch_acc, f1_total, correct_heads, node_system, node_gold
 
 
 def unicodeToAscii(s):

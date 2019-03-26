@@ -67,12 +67,12 @@ class Trainer(BaseTrainer):
             self.mapping_optimizer.zero_grad()
             self.scale_optimizer.zero_grad()
         if subsample:
-            loss, _, _ = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, True)
+            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, True)
         else:
-            loss, _, edge_acc = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, False)
+            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, False)
 
         loss_val = loss.data.item()
-        if eval or not subsample:
+        if eval:
             return loss_val, edge_acc
 
         loss.backward(retain_graph=True)
@@ -80,7 +80,7 @@ class Trainer(BaseTrainer):
         self.optimizer.step()
         self.mapping_optimizer.step()
         self.scale_optimizer.step()
-        return loss_val, 0.0
+        return loss_val, edge_acc
 
 
 
@@ -89,16 +89,15 @@ class Trainer(BaseTrainer):
         word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel = inputs
 
         self.model.eval()
-        batch_size = word.size(0)
-        _, _, test_acc = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale)
+        loss, edge_acc, f1_total, correct_heads, node_system, node_gold = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale)
         # head_seqs = [chuliu_edmonds_one_root(adj[:l, :l])[1:] for adj, l in zip(preds[0], sentlens)] # remove attachment for the root
         # deprel_seqs = [self.vocab['deprel'].unmap([preds[1][i][j+1][h] for j, h in enumerate(hs)]) for i, hs in enumerate(head_seqs)]
 
-        # pred_tokens = [[[str(head_seqs[i][j]), deprel_seqs[i][j]] for j in range(sentlens[i]-1)] for i in range(batch_size)]
+        # pred_tokens  = [[[str(head_seqs[i][j]), deprel_seqs[i][j]] for j in range(sentlens[i]-1)] for i in range(batch_size)]
         # if unsort:
-        #     pred_tokens = utils.unsort(pred_tokens, orig_idx)
-        return test_acc
-
+        #     preds = utils.unsort(preds, orig_idx)
+        return edge_acc, f1_total, correct_heads, node_system, node_gold
+    
     def save(self, filename, skip_modules=True):
         model_state = self.model.state_dict()
         # skip saving modules like pretrained embeddings, because they are large and will be saved in a separate file

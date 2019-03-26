@@ -22,7 +22,6 @@ class DataLoader:
         self.batch_size = batch_size
         print("We are entering data loader")
         print("batch size should be", batch_size)
-        sample_dev_ratio = 0.1
         self.args = args
         self.eval = evaluation
         # self.shuffled = not self.eval
@@ -44,16 +43,17 @@ class DataLoader:
             self.vocab = vocab
         self.pretrain_vocab = pretrain.vocab
 
-        # filter and sample data
+        # filter, sort the data, take based on the percentage.
         if args.get('sample_train', 1.0) < 1.0 and not self.eval:
+            data = sorted(data, key = lambda x: len(x[0]))
             keep = int(args['sample_train'] * len(data))
             data = data[:keep]
             print("Subsample training set with rate {:g}".format(args['sample_train']))
 
-        if sample_dev_ratio < 1.0 and self.eval:
-            keep = int(sample_dev_ratio * len(data))
-            data = data[:keep]
-            print("Subsample dev set with rate {:g}".format(sample_dev_ratio))
+        # if sample_dev_ratio < 1.0 and self.eval:
+        #     keep = int(sample_dev_ratio * len(data))
+        #     data = data[:keep]
+        #     print("Subsample dev set with rate {:g}".format(sample_dev_ratio))
 
         data = self.preprocess(input_src, data, self.vocab, self.pretrain_vocab, args)
         
@@ -62,10 +62,10 @@ class DataLoader:
             #random.shuffle(data)
 
         self.num_examples = len(data)
-        print("length of the data", self.num_examples)
+        # print("length of the data", self.num_examples)
         # chunk into batches
         print("Entering to chunk into batches")
-        self.data = self.chunk_batches(data)
+        self.data = self.chunk_batches(data, args['sample_train'])
         if filename is not None:
             print("{} batches created for {}.".format(len(self.data), filename))
 
@@ -110,7 +110,6 @@ class DataLoader:
 
         print("length of data", len(data))
         idx = 0
-        problem_idx = []
         for sentence in parse_incr(data_file):
             if idx < len(data):                    
                 curr_tree = sentence.to_tree()
@@ -123,18 +122,18 @@ class DataLoader:
                     target_tensor.requires_grad = False
                     processed[idx][7] = target_tensor
                 elif len(G_curr) == 0:
-                    problem_idx.append(idx)
+                    G = nx.Graph()
+                    G.add_node(0)
+                    target_matrix = util.get_dist_mat(G)
+                    target_tensor = torch.from_numpy(target_matrix).float()
+                    target_tensor.requires_grad = False
+                    processed[idx][7] = target_tensor
                 idx += 1
             else:
                 break
         
-        print("problem idx", problem_idx)
-        final_processed = []
-        for i, item in enumerate(processed):
-            if not isinstance(item[7],list) and i not in problem_idx:
-                final_processed.append(item)
-        print("length of final processed", len(final_processed))
-        return final_processed
+
+        return processed
 
     def __len__(self):
         return len(self.data)
@@ -209,13 +208,13 @@ class DataLoader:
         self.data = self.chunk_batches(data)
         random.shuffle(data)
 
-    def chunk_batches(self, data):
+    def chunk_batches(self, data, sample_ratio):
         # res = []
 
-        if not self.eval:
-            # sort sentences (roughly) by length for better memory utilization
-            data = sorted(data, key = lambda x: len(x[0]), reverse=random.random() > .5)
-
+        data = sorted(data, key = lambda x: len(x[0]))
+        keep = int(sample_ratio*len(data))
+        data = data[:keep]
+        print("length of data", len(data))
         current = []
         currentlen = 0
         # idx = 0 

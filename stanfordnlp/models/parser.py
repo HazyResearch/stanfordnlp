@@ -60,19 +60,18 @@ def parse_args():
     parser.add_argument('--no_pretrain', dest='pretrain', action='store_false', help="Turn off pretrained embeddings.")
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
-    parser.add_argument('--sample_dev', type=float, default=0.1, help='Subsample dev data.')
-    parser.add_argument('--sample_train', type=float, default=0.01, help='Subsample training data.')
+    parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='sgd', help='sgd, rsgd, adagrad, adam or adamax.')
     parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
-    parser.add_argument('--max_steps', type=int, default=50000)
+    parser.add_argument('--max_steps', type=int, default=1000000)
     parser.add_argument('--eval_interval', type=int, default=10)
-    parser.add_argument('--max_steps_before_stop', type=int, default=30000)
+    parser.add_argument('--max_steps_before_stop', type=int, default=1000000)
     parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--max_grad_norm', type=float, default=1.0, help='Gradient clipping.')
     parser.add_argument('--log_step', type=int, default=2, help='Print log every k steps.')
     parser.add_argument('--save_dir', type=str, default='saved_models/depparse', help='Root dir for saving models.')
-    parser.add_argument('--save_name', type=str, default=None, help="File name to save the model")
+    parser.add_argument('--save_name', type=str, default='bestmodel', help="File name to save the model")
 
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available())
@@ -123,7 +122,7 @@ def train(args):
     print("Loading data with batch size {}...".format(args['batch_size']))
     train_batch = DataLoader(args['train_file'], args['batch_size'], args, pretrain, evaluation=False)
     vocab = train_batch.vocab
-    # dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
+    dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
 
     # pred and gold path
     system_pred_file = args['output_file']
@@ -147,74 +146,94 @@ def train(args):
     dev_score_history = []
     best_dev_preds = []
     global_start_time = time.time()
-    format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), lr: {:.6f}'
+    format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), acc: {:.6f}'
 
     last_best_step = 0
     # start training
     train_loss = 0
-
+    train_edge_acc = 0
+    
+    print("Train batch", len(train_batch))
     while True:
         do_break = False
         for i, batch in enumerate(train_batch):
-            for iter in range(2000):
-                start_time = time.time()
-                global_step += 1
-                loss, _ = trainer.update(batch, eval=False, subsample=True) # update step
-                train_loss += loss
-                duration = time.time() - start_time
-                avg_loss = loss/args['log_step']
-                logging.info(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
-                        max_steps, avg_loss, duration, current_lr))
-                    
+            start_time = time.time()
+            global_step += 1
+            loss, edge_acc = trainer.update(batch, eval=False, subsample=True) # update step
+            train_loss += loss
+            train_edge_acc += edge_acc
+            duration = time.time() - start_time
+            logging.info(format_str.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), global_step,\
+                    max_steps, loss, duration, edge_acc))
+                
 
-                if global_step % args['eval_interval'] == 0:
-                #     # eval on dev
-                #     print("Evaluating on dev set...")
-                    # dev_acc_total = 0
-                    # for batch in dev_batch:
-                    #     dev_acc = trainer.predict(batch)
-                    #     dev_acc_total += dev_acc
+            if global_step % len(train_batch) == 0:
+            #     # eval on dev
+                print("Evaluating on dev set...")
+                dev_acc_total = 0
+                total_node_system = 0
+                total_node_gold = 0
+                total_correct_heads = 0
+                f1_total = 0
+                for db in dev_batch:
+                    dev_acc, f1, correct_heads, node_system, node_gold = trainer.predict(db)
+                    dev_acc_total += dev_acc
+                    total_node_system += node_system
+                    total_node_gold += node_gold
+                    total_correct_heads += correct_heads
+                    f1_total += f1
 
+                precision = total_correct_heads/total_node_system
+                recall = total_correct_heads/total_node_gold
+                f_1_overall = 2*precision*recall/(precision+recall)
 
-                #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
-                #     dev_batch.conll.write_conll(system_pred_file)
-                #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
-                    full_loss, edge_acc = trainer.update(batch, eval=False, subsample=False)
-                    # dev_acc_total /= len(dev_batch)
-                    # print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
-                    logging.info("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
-                    # print("Dev accuracy", dev_acc_total)
-                    # logging.info("step {}: Dev acc. = {:.6f}".format(global_step, dev_acc_total))
-                # train_loss = 0
+            #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
+            #     dev_batch.conll.write_conll(system_pred_file)
+            #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
+                dev_acc_total /= len(dev_batch)
+                train_edge_acc /= len(train_batch)
+                train_loss /= len(train_batch)
+                print("dev num examples", dev_batch.num_examples)
+                f1_avg = f1_total/dev_batch.num_examples
 
-                if (global_step % 1000 == 0) and current_lr>1e-5:
-                    current_lr *= 0.5
-                    scale_lr *= 0.5
-                    trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
-                    trainer.scale_optimizer = torch.optim.SGD([trainer.scale], lr=scale_lr)
-                #     # save best model
-                #     if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
-                #         last_best_step = global_step
-                #         trainer.save(model_file)
-                #         print("new best model saved.")
-                #         best_dev_preds = dev_preds
+                # print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
+                logging.info("step {}: Train loss = {:.6f}, Train acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
+                # print("Dev accuracy", dev_acc_total)
+                logging.info("step {}: Dev acc. = {:.6f}, Dev F1 = {:.4f}, Dev F1 avg.= {:2f}".format(global_step, dev_acc_total, f_1_overall, f1_avg))
+                train_loss = 0
+                train_edge_acc = 0
+                dev_score_history.append(f1_avg)
 
-                #     dev_score_history += [dev_score]
-                #     print("")
+                if len(dev_score_history) == 0 or f1_avg > max(dev_score_history):
+                    last_best_step = global_step
+                    trainer.save(model_file)
+                    print("new best model saved.")
 
-                if global_step - last_best_step >= args['max_steps_before_stop']:
-                    # if not using_amsgrad:
-                    #     print("Switching to AMSGrad")
-                    #     last_best_step = global_step
-                    #     using_amsgrad = True
-                    #     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
-                    # else:
-                    do_break = True
-                    break
+            # train_loss = 0
 
-                if global_step >= args['max_steps']:
-                    do_break = True
-                    break
+            # if (global_step % 1000 == 0) and current_lr>1e-5:
+            
+            #     current_lr *= 0.5
+            #     scale_lr *= 0.5
+            #     trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
+            #     trainer.scale_optimizer = torch.optim.SGD([trainer.scale], lr=scale_lr)
+            #     # save best model
+            #     dev_score_history += [dev_score]
+            #     print("")
+
+            if global_step - last_best_step >= args['max_steps_before_stop']:
+                # if not using_amsgrad:
+                #     print("Switching to AMSGrad")
+                #     last_best_step = global_step
+                #     using_amsgrad = True
+                #     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
+                # else:
+                do_break = True
+                break
+
+            if global_step >= args['max_steps']:
+                do_break = True
+                break
 
         if do_break: break
         # print("Reshuffling now")

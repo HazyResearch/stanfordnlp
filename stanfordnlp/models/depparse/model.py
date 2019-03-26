@@ -70,7 +70,7 @@ class Parser(nn.Module):
         self.parserlstm_h_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         self.parserlstm_c_init = nn.Parameter(torch.zeros(2 * self.args['num_layers'], 1, self.args['hidden_dim']))
         
-        self.output_size = 100
+        self.output_size = 400
         # classifiers
 
         self.hypmapping =  nn.Sequential(
@@ -191,29 +191,32 @@ class Parser(nn.Module):
         # print("target tensor shape", head.shape)
         # print("mapped vectors", mapped_vectors.shape)
         subsample_ratio = 1.0
-        # print("subsample ratio", subsample_ratio)
         preds = []
+        # print("subsample ratio", subsample_ratio)
         edge_acc = 0.0
+        f1_total, correct_heads, node_system, node_gold = 0, 0, 0, 0
 
         if self.training:
             unlabeled_target = head
             # print("target shape", unlabeled_target.shape)
             n = unlabeled_target.shape[1]
-            if subsample:
-                sample_row_num = int(round(n*subsample_ratio))
-                sampled_rows = np.random.permutation(n)[:sample_row_num]
-            else:
-                sampled_rows = list(range(n))
+            # if subsample:
+            #     sample_row_num = int(round(n*subsample_ratio))
+            #     sampled_rows = np.random.permutation(n)[:sample_row_num]
+            # else:
+            sampled_rows = list(range(n))
+
+
+            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
+            # print("dist recovered shape", dist_recovered.shape)            
+            dummy = dist_recovered.clone()
+            target_dummy = unlabeled_target.clone()
+            edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             
             # print("sampled rows", sampled_rows)
             # print("mapped vectors", mapped_vectors.shape)
-            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
             # print("dist recovered shape", dist_recovered.shape)
             loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows)
-            if not subsample:
-                dummy = dist_recovered.clone()
-                target_dummy = unlabeled_target.clone()
-                edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
             # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
             # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
@@ -252,8 +255,8 @@ class Parser(nn.Module):
             # print("dist recovered shape", dist_recovered.shape)            
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
-            edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
+            edge_acc, f1_total, correct_heads, node_system, node_gold = util.predict_batch(target_dummy.cpu().numpy(),dummy.detach().cpu().numpy())
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 
-        return loss, preds, edge_acc
+        return loss, edge_acc, f1_total, correct_heads, node_system, node_gold

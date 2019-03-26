@@ -114,6 +114,8 @@ class CoNLLFile():
         assert isinstance(fields, list), "Must provide field names as a list."
         assert isinstance(contents, list), "Must provide contents as a list (one item per line)."
         assert len(fields) >= 1, "Must have at least one field."
+        print("len(contents", len(contents))
+        print("num words", self.num_words)
         assert self.num_words == len(contents), "Contents must have the same number as the original file."
         field_idxs = [FIELD_TO_IDX[f.lower()] for f in fields]
         cidx = 0
