@@ -116,8 +116,6 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
             if i != row:
                 dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
-    print("SCALE = ", scale)
-    print("!!!!!!!!!!\n")
     #print("Distance matrix", dist_mat)
     return dist_mat
 
