@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument('--no_pretrain', dest='pretrain', action='store_false', help="Turn off pretrained embeddings.")
     parser.add_argument('--no_linearization', dest='linearization', action='store_true', help="Turn off linearization term.")
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
-    parser.add_argument('--sample_train', type=float, default=0.5, help='Subsample training data.')
+    parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='sgd', help='sgd, rsgd, adagrad, adam or adamax.')
     parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
@@ -211,7 +211,7 @@ def train(args):
 
             # train_loss = 0
 
-            if (global_step % 20 == 0) and current_lr>1e-5:
+            if (global_step % 2000 == 0) and current_lr>1e-5:
             
                 current_lr *= 0.75
             #     scale_lr *= 0.5

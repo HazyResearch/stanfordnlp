@@ -255,7 +255,7 @@ class Parser(nn.Module):
             # print("dist recovered shape", dist_recovered.shape)            
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
-            edge_acc, f1_total, correct_heads, node_system, node_gold = util.predict_batch(target_dummy.cpu().numpy(),dummy.detach().cpu().numpy())
+            edge_acc, f1_total, correct_heads, node_system, node_gold = util.predict_batch(target_dummy.cpu().numpy(),dummy.detach().cpu().numpy(), sentlens)
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 
