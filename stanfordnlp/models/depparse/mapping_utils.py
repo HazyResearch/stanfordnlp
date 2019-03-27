@@ -116,6 +116,8 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
             if i != row:
                 dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
+    print("SCALE = ", scale)
+    print("!!!!!!!!!!\n")
     #print("Distance matrix", dist_mat)
     return dist_mat
 
@@ -168,9 +170,12 @@ def distortion_row(H1, H2, n, row):
     avg, good = 0, 0
     for i in range(n):
         if i != row and entry_is_good(H1[i], H2[i]):
-            _avg = distortion_entry(H1[i], H2[i])
-            good        += 1
-            avg         += _avg
+            #if H1[i] <= 4:
+            if True:  
+                _avg = 1.0 / H1[i] * distortion_entry(H1[i], H2[i])
+                #_avg = distortion_entry(H1[i], H2[i])
+                good        += 1
+                avg         += _avg
     if good > 0:
         avg /= good 
     else:
@@ -206,13 +211,15 @@ def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
     for b in range(batch_size):
         i=0
         for row in sampled_rows:
-            '''print("on row ", row) 
+            '''
+            print("on row ", row) 
             print()
             print("true")
             print(H1[b,row,:])
             print("ours")
             print(H2[b,i,:])
-            print()'''
+            print()
+            '''
             dists[b,i] = distortion_row(H1[b,row,:], H2[b,i,:], n, row)[0]
             i += 1
 
