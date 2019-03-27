@@ -48,6 +48,9 @@ def dist_h(u,v):
 def dist_e(u, v):
     return torch.norm(u-v, 2)
 
+def dist_eb(u, v):
+    return torch.norm(u-v, 2)
+
 def dist_p(u,v):
     z  = 2*torch.norm(u-v,2)**2
     uu = 1. + torch.div(z,((1-torch.norm(u,2)**2)*(1-torch.norm(v,2)**2)))
@@ -55,7 +58,6 @@ def dist_p(u,v):
     return acosh(torch.clamp(uu, min=1+machine_eps))
 
 def dist_pb(u,v):
-
     z  = 2*torch.norm(u-v,2, dim=1)**2
     uu = 1. + torch.div(z,((1-torch.norm(u,2, dim=1)**2)*(1-torch.norm(v,2, dim=1)**2)))
     machine_eps = np.finfo(uu.data.detach().cpu().numpy().dtype).eps  # problem with cuda tensor
@@ -67,6 +69,24 @@ def distance_matrix_euclidean(input):
     mp2 = torch.stack([input]*row_n).transpose(0,1)
     dist_mat = torch.sum((mp1-mp2)**2,2).squeeze()
     return dist_mat
+
+def pairwise_distances(x, y=None):
+    '''
+    Input: x is a Nxd matrix
+           y is an optional Mxd matirx
+    Output: dist is a NxM matrix where dist[i,j] is the square norm between x[i,:] and y[j,:]
+            if y is not given then use 'y=x'.
+    i.e. dist[i,j] = ||x[i,:]-y[j,:]||^2
+    '''
+    x_norm = (x**2).sum(1).view(-1, 1)
+    if y is not None:
+        y_norm = (y**2).sum(1).view(1, -1)
+    else:
+        y = x
+        y_norm = x_norm.view(1, -1)
+
+    dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(y, 0, 1))
+    return dist
 
 
 def distance_matrix_hyperbolic(input, sampled_rows, scale):
@@ -96,6 +116,20 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
             if i != row:
                 dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
+    #print("Distance matrix", dist_mat)
+    return dist_mat
+
+def distance_matrix_euclidean_batch(input, sampled_rows, scale):
+    #print("were computing the matrix with sampled_rows = ")
+    #print(sampled_rows)
+    batch_size = input.shape[0]
+    row_n = input.shape[1]
+    dist_mat = torch.zeros(batch_size, len(sampled_rows), row_n, device=device)
+    # num_cores = multiprocessing.cpu_count()
+    # dist_mat = Parallel(n_jobs=num_cores)(delayed(compute_row)(i,adj_mat) for i in range(n))
+    idx = 0
+    for b in range(batch_size):
+        dist_mat[b,:,:] = distance_matrix_euclidean(input[b,:,:])
     #print("Distance matrix", dist_mat)
     return dist_mat
 
@@ -345,7 +379,7 @@ def get_heads(G, head_dict, node_list):
         head_dict[root] = 'root'
     return G, head_dict, node_list
 
-def get_heads_batch(hrec_batch):
+def get_heads_batch(hrec_batch, sentlens):
 
     batch_size = hrec_batch.shape[0]
     preds = []
@@ -353,6 +387,8 @@ def get_heads_batch(hrec_batch):
 
     for b in range(batch_size):
         hrec = hrec_batch[b,:,:]
+        ind = sentlens[b]
+        hrec = hrec[:ind,:ind]
         mst = csg.minimum_spanning_tree(hrec)
         G = nx.from_scipy_sparse_matrix(mst)
         seq = []
@@ -384,7 +420,7 @@ def get_heads_batch(hrec_batch):
     return preds
 
 
-def predict_batch(target_batch, hrec_batch):
+def predict_batch(target_batch, hrec_batch, sentlens):
 
     batch_size = hrec_batch.shape[0]
     node_system = 0
@@ -393,18 +429,19 @@ def predict_batch(target_batch, hrec_batch):
     batch_acc = 0
     f1_total = 0
     for i in range(batch_size):
-        hrec = hrec_batch[i,:,:]
-        target = target_batch[i,:,:]
+        ind = sentlens[i]
+        hrec = hrec_batch[i,:ind,:ind]
+        target = target_batch[i,:ind,:ind]
         mst = csg.minimum_spanning_tree(hrec)
         G_rec = nx.from_scipy_sparse_matrix(mst)
         mst_target = csg.minimum_spanning_tree(target)
         G = nx.from_scipy_sparse_matrix(mst_target)
         node_system += len(list(G_rec.nodes()))
         node_gold += len(list(G.nodes()))
-        found = 1
+        found = 1 #counting mst root to placeholder root node.
         for edge in G_rec.edges():
             if edge in G.edges(): found+= 1
-        correct_heads = correct_heads + found
+        correct_heads += found
         acc = found / (len(list(G.edges()))+1)
         recall = acc
         precision = found / (len(list(G_rec.edges()))+1)
