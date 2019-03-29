@@ -24,6 +24,7 @@ class DataLoader:
         print("batch size should be", batch_size)
         self.args = args
         self.eval = evaluation
+        sample_dev_ratio = args['sample_train']
         # self.shuffled = not self.eval
         # check if input source is a file or a Document object
         if isinstance(input_src, str):
@@ -45,15 +46,13 @@ class DataLoader:
 
         # filter, sort the data, take based on the percentage.
         if args.get('sample_train', 1.0) < 1.0 and not self.eval:
-            data = sorted(data, key = lambda x: len(x[0]))
-            keep = int(args['sample_train'] * len(data))
-            data = data[:keep]
+            # data = sorted(data, key = lambda x: len(x[0]))
             print("Subsample training set with rate {:g}".format(args['sample_train']))
 
-        # if sample_dev_ratio < 1.0 and self.eval:
-        #     keep = int(sample_dev_ratio * len(data))
-        #     data = data[:keep]
-        #     print("Subsample dev set with rate {:g}".format(sample_dev_ratio))
+        if sample_dev_ratio < 1.0 and self.eval:
+            # keep = int(sample_dev_ratio * len(data))
+            # data = random.sample(data, keep)
+            print("Subsample dev set with rate {:g}".format(sample_dev_ratio))
 
         data = self.preprocess(input_src, data, self.vocab, self.pretrain_vocab, args)
         
@@ -61,7 +60,7 @@ class DataLoader:
         #if self.shuffled:
             #random.shuffle(data)
 
-        self.num_examples = len(data)
+        # self.num_examples = len(data)
         # print("length of the data", self.num_examples)
         # chunk into batches
         print("Entering to chunk into batches")
@@ -108,7 +107,7 @@ class DataLoader:
             processed.append(processed_sent)
             i+=1
 
-        print("length of data", len(data))
+        # print("length of data", len(data))
         idx = 0
         for sentence in parse_incr(data_file):
             if idx < len(data):                    
@@ -209,11 +208,9 @@ class DataLoader:
         random.shuffle(data)
 
     def chunk_batches(self, data, sample_ratio):
-        # res = []
-
+        keep = int(sample_ratio * len(data))
+        data = random.sample(data, keep)
         data = sorted(data, key = lambda x: len(x[0]))
-        keep = int(sample_ratio*len(data))
-        data = data[:keep]
         print("length of data", len(data))
         current = []
         currentlen = 0

@@ -8,17 +8,24 @@
 source scripts/config.sh
 
 treebank=$1; shift
-tag_type=$1; shift
+save_name=$1; shift
+sample_train=$1; shift
 args=$@
 short=`bash scripts/treebank_to_shorthand.sh ud $treebank`
 lang=`echo $short | sed -e 's#_.*##g'`
 
-train_file=${DEPPARSE_DATA_DIR}/${short}.train.in.conllu
-eval_file=${DEPPARSE_DATA_DIR}/${short}.dev.in.conllu
-output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.conllu
-gold_file=${DEPPARSE_DATA_DIR}/${short}.dev.gold.conllu
+# train_file=${DEPPARSE_DATA_DIR}/${short}.train.in.org.conllu
+# eval_file=${DEPPARSE_DATA_DIR}/${short}.dev.in.org.conllu
+# output_file=${DEPPARSE_DATA_DIR}/${short}.dev.output.conllu
+# gold_file=${DEPPARSE_DATA_DIR}/${short}.dev.gold.org.conllu
+train_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-train.conllu
+eval_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-dev.conllu
+output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.sampled.conllu
+gold_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-dev.conllu
+
 
 if [ ! -e $train_file ]; then
+    echo "In the if statement for train file"
     bash scripts/prep_depparse_data.sh $treebank $tag_type
 fi
 
@@ -33,9 +40,10 @@ echo "Using batch size $batch_size"
 
 echo "Running parser with $args..."
 python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --train_file $train_file --eval_file $eval_file \
-    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --batch_size $batch_size --mode train $args
-# python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file \
-#     --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --mode predict $args
-results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`
+    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --batch_size $batch_size --mode train $args \
+    --save_name $save_name --sample_train $sample_train
+python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file \
+    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --mode predict $args --save_name $save_name
+# results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`
 echo $results $args >> ${DEPPARSE_DATA_DIR}/${short}.results
-echo $short $results $args
+# echo $short $results $args

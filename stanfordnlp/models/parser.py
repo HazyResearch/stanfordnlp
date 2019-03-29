@@ -90,23 +90,27 @@ def main():
     elif args.cuda:
         torch.cuda.manual_seed(args.seed)
 
+
+
+    args = vars(args)
+    print("Running parser in {} mode".format(args['mode']))
+
     formatter = logging.Formatter('%(asctime)s %(message)s')
     logging.basicConfig(level=logging.DEBUG,
                         format='%(message)s',
                         datefmt='%FT%T',)
     logging.info(f"Logging")
     log = logging.getLogger()
-    fh  = logging.FileHandler("logparsing")
+    log_name = "logs/"+str(args['save_name'])
+    if not os.path.exists(log_name): os.system("touch "+log_name)
+    fh  = logging.FileHandler(log_name)
     fh.setFormatter(formatter)
     log.addHandler(fh)
 
-    args = vars(args)
-    print("Running parser in {} mode".format(args['mode']))
-
-    # if args['mode'] == 'train':
-    train(args)
-    # else:
-    #     evaluate(args)
+    if args['mode'] == 'train':
+        train(args)
+    else:
+        evaluate(args)
 
 def train(args):
     utils.ensure_dir(args['save_dir'])
@@ -170,18 +174,14 @@ def train(args):
             if global_step % len(train_batch) == 0:
             #     # eval on dev
                 print("Evaluating on dev set...")
-                dev_acc_total = 0
                 total_node_system = 0
                 total_node_gold = 0
                 total_correct_heads = 0
-                f1_total = 0
                 for db in dev_batch:
-                    dev_acc, f1, correct_heads, node_system, node_gold = trainer.predict(db)
-                    dev_acc_total += dev_acc
+                    _, _, correct_heads, node_system, node_gold = trainer.predict(db)
                     total_node_system += node_system
                     total_node_gold += node_gold
                     total_correct_heads += correct_heads
-                    f1_total += f1
 
                 precision = total_correct_heads/total_node_system
                 recall = total_correct_heads/total_node_gold
@@ -190,16 +190,13 @@ def train(args):
             #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
             #     dev_batch.conll.write_conll(system_pred_file)
             #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
-                dev_acc_total /= len(dev_batch)
                 train_edge_acc /= len(train_batch)
                 train_loss /= len(train_batch)
-                print("dev num examples", dev_batch.num_examples)
-                f1_avg = f1_total/dev_batch.num_examples
 
                 # print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
                 logging.info("step {}: Train loss = {:.6f}, Train acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
                 # print("Dev accuracy", dev_acc_total)
-                logging.info("step {}: Dev acc. = {:.6f}, Dev F1 = {:.4f}, Dev F1 avg.= {:2f}".format(global_step, dev_acc_total, f_1_overall, f1_avg))
+                logging.info("step {}: Dev F1 = {:.6f}".format(global_step, f_1_overall))
                 train_loss = 0
                 train_edge_acc = 0
                 dev_score_history.append(f1_avg)
