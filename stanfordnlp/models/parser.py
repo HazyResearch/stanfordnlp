@@ -199,18 +199,18 @@ def train(args):
                 logging.info("step {}: Dev F1 = {:.6f}".format(global_step, f_1_overall))
                 train_loss = 0
                 train_edge_acc = 0
-                dev_score_history.append(f1_avg)
+                dev_score_history.append(f_1_overall)
 
-                if len(dev_score_history) == 0 or f1_avg > max(dev_score_history):
+                if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
                     last_best_step = global_step
                     trainer.save(model_file)
                     print("new best model saved.")
 
             # train_loss = 0
 
-            if (global_step % 2000 == 0) and current_lr>1e-5:
+            # if (global_step % 2000 == 0) and current_lr>1e-5:
             
-                current_lr *= 0.75
+            #     current_lr *= 0.75
             #     scale_lr *= 0.5
             #     trainer.optimizer = utils.RiemannianSGD(trainer.model.parameters(), lr=current_lr, rgrad=utils.poincare_grad, retraction=utils.retraction)
             #     trainer.scale_optimizer = torch.optim.SGD([trainer.scale], lr=scale_lr)
