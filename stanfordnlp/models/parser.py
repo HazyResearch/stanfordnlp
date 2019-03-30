@@ -72,7 +72,6 @@ def parse_args():
     parser.add_argument('--log_step', type=int, default=2, help='Print log every k steps.')
     parser.add_argument('--save_dir', type=str, default='saved_models/depparse', help='Root dir for saving models.')
     parser.add_argument('--save_name', type=str, default='bestmodel', help="File name to save the model")
-
     parser.add_argument('--seed', type=int, default=1234)
     parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available())
     parser.add_argument('--cpu', action='store_true', help='Ignore CUDA.')
