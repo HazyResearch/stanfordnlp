@@ -89,24 +89,21 @@ def main():
     elif args.cuda:
         torch.cuda.manual_seed(args.seed)
 
-
-
     args = vars(args)
     print("Running parser in {} mode".format(args['mode']))
 
-    formatter = logging.Formatter('%(asctime)s %(message)s')
-    logging.basicConfig(level=logging.DEBUG,
+    if args['mode'] == 'train':
+        formatter = logging.Formatter('%(asctime)s %(message)s')
+        logging.basicConfig(level=logging.DEBUG,
                         format='%(message)s',
                         datefmt='%FT%T',)
-    logging.info(f"Logging")
-    log = logging.getLogger()
-    log_name = "logs/"+str(args['save_name'])
-    if not os.path.exists(log_name): os.system("touch "+log_name)
-    fh  = logging.FileHandler(log_name)
-    fh.setFormatter(formatter)
-    log.addHandler(fh)
-
-    if args['mode'] == 'train':
+        logging.info(f"Logging")
+        log = logging.getLogger()
+        log_name = "logs/"+str(args['save_name'])
+        if not os.path.exists(log_name): os.system("touch "+log_name)
+        fh  = logging.FileHandler(log_name)
+        fh.setFormatter(formatter)
+        log.addHandler(fh)
         train(args)
     else:
         evaluate(args)
@@ -115,11 +112,13 @@ def train(args):
     utils.ensure_dir(args['save_dir'])
     model_file = args['save_dir'] + '/' + args['save_name'] if args['save_name'] is not None \
             else '{}/{}_parser.pt'.format(args['save_dir'], args['shorthand'])
+    print("model file", model_file)
 
     # load pretrained vectors
     vec_file = utils.get_wordvec_file(args['wordvec_dir'], args['shorthand'])
     pretrain_file = '{}/{}.pretrain.pt'.format(args['save_dir'], args['shorthand'])
     pretrain = Pretrain(pretrain_file, vec_file)
+    print("pretrain file", pretrain_file)
 
     # load data
     print("Loading data with batch size {}...".format(args['batch_size']))
@@ -128,8 +127,8 @@ def train(args):
     dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
 
     # pred and gold path
-    system_pred_file = args['output_file']
-    gold_file = args['gold_file']
+    # system_pred_file = args['output_file']
+    # gold_file = args['gold_file']
 
     # skip training if the language does not have training or dev data
     # if len(train_batch) == 0 or len(dev_batch) == 0:
@@ -138,7 +137,7 @@ def train(args):
         sys.exit(0)
 
     current_lr = args['lr']
-    scale_lr = current_lr
+    # scale_lr = current_lr
     print("Training parser...")
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
     print("optimizer:", trainer.optimizer)
@@ -147,7 +146,7 @@ def train(args):
     global_step = 0
     max_steps = args['max_steps']
     dev_score_history = []
-    best_dev_preds = []
+    # best_dev_preds = []
     global_start_time = time.time()
     format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), acc: {:.6f}'
 
@@ -192,18 +191,19 @@ def train(args):
                 train_edge_acc /= len(train_batch)
                 train_loss /= len(train_batch)
 
-                # print("step {}: Full loss = {:.6f}, Edge acc. = {:.4f}".format(global_step, full_loss, edge_acc))
                 logging.info("step {}: Train loss = {:.6f}, Train acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
-                # print("Dev accuracy", dev_acc_total)
                 logging.info("step {}: Dev F1 = {:.6f}".format(global_step, f_1_overall))
                 train_loss = 0
                 train_edge_acc = 0
-                dev_score_history.append(f_1_overall)
+
 
                 if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
+                    print("max", max(dev_score_history))
+                    print("f1 overall", f_1_overall)
                     last_best_step = global_step
                     trainer.save(model_file)
                     print("new best model saved.")
+                dev_score_history.append(f_1_overall)
 
             # train_loss = 0
 
@@ -242,11 +242,13 @@ def train(args):
 
 def evaluate(args):
     # file paths
-    system_pred_file = args['output_file']
-    gold_file = args['gold_file']
+    # system_pred_file = args['output_file']
+    # gold_file = args['gold_file']
     model_file = args['save_dir'] + '/' + args['save_name'] if args['save_name'] is not None \
             else '{}/{}_parser.pt'.format(args['save_dir'], args['shorthand'])
+    print("model file", model_file)
     pretrain_file = '{}/{}.pretrain.pt'.format(args['save_dir'], args['shorthand'])
+    print("pretrain file", pretrain_file)
     
     # load pretrain
     pretrain = Pretrain(pretrain_file)
@@ -257,32 +259,45 @@ def evaluate(args):
     loaded_args, vocab = trainer.args, trainer.vocab
 
     # load config
-    for k in args:
-        if k.endswith('_dir') or k.endswith('_file') or k in ['shorthand'] or k == 'mode':
-            loaded_args[k] = args[k]
+    # for k in args:
+    #     if k.endswith('_dir') or k.endswith('_file') or k in ['shorthand'] or k == 'mode':
+    #         loaded_args[k] = args[k]
+
+    batch_size = 10
 
     # load data
-    print("Loading data with batch size {}...".format(args['batch_size']))
-    batch = DataLoader(args['eval_file'], args['batch_size'], loaded_args, pretrain, vocab=vocab, evaluation=True)
+    print("Loading data with batch size {}...".format(batch_size))
+    dev_batch = DataLoader(args['eval_file'], batch_size, loaded_args, pretrain, vocab=vocab, evaluation=True)
 
-    if len(batch) > 0:
+    if len(dev_batch) > 0:
         print("Start evaluation...")
-        preds = []
-        for i, b in enumerate(batch):
-            preds += trainer.predict(b)
-    else:
-        # skip eval if dev data does not exist
-        preds = []
+        # preds = []
+        total_node_system = 0
+        total_node_gold = 0
+        total_correct_heads = 0
+        for db in dev_batch:
+            _, _, correct_heads, node_system, node_gold = trainer.predict(db)
+            total_node_system += node_system
+            total_node_gold += node_gold
+            total_correct_heads += correct_heads
+
+        precision = total_correct_heads/total_node_system
+        recall = total_correct_heads/total_node_gold
+        f_1_overall = 2*precision*recall/(precision+recall)
+    print("Dev F1:", f_1_overall)
+    # else:
+    #     # skip eval if dev data does not exist
+    #     preds = []
 
     # write to file and score
-    batch.conll.set(['head', 'deprel'], [y for x in preds for y in x])
-    batch.conll.write_conll(system_pred_file)
+    # batch.conll.set(['head', 'deprel'], [y for x in preds for y in x])
+    # batch.conll.write_conll(system_pred_file)
 
-    if gold_file is not None:
-        _, _, score = scorer.score(system_pred_file, gold_file)
+    # if gold_file is not None:
+    #     _, _, score = scorer.score(system_pred_file, gold_file)
 
-        print("Parser score:")
-        print("{} {:.2f}".format(args['shorthand'], score*100))
+    #     print("Parser score:")
+    #     print("{} {:.2f}".format(args['shorthand'], score*100))
 
 if __name__ == '__main__':
     main()

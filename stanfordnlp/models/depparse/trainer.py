@@ -52,7 +52,7 @@ class Trainer(BaseTrainer):
         else:
             self.model.cpu()
         self.optimizer = utils.get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
-        self.mapping_optimizer = utils.get_optimizer('rsgd', self.model.hypmapping.parameters(), 0.1)
+        self.mapping_optimizer = utils.get_optimizer('sgd', self.model.hypmapping.parameters(), 0.1)
         self.scale_optimizer = torch.optim.SGD([self.scale], lr=0.01)
     
     def update(self, batch, eval=False, subsample=True):

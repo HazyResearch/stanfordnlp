@@ -20,7 +20,7 @@ lang=`echo $short | sed -e 's#_.*##g'`
 # gold_file=${DEPPARSE_DATA_DIR}/${short}.dev.gold.org.conllu
 train_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-train.conllu
 eval_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-dev.conllu
-output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.sampled.conllu
+output_file=${DEPPARSE_DATA_DIR}/${short}.test.pred.conllu
 gold_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-dev.conllu
 
 
@@ -42,8 +42,7 @@ echo "Running parser with $args..."
 python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --train_file $train_file --eval_file $eval_file \
     --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --batch_size $batch_size --mode train $args \
     --save_name $save_name --sample_train $sample_train
-python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file \
-    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --mode predict $args --save_name $save_name
+python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file --mode predict $args --save_name $save_name
 # results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`
 echo $results $args >> ${DEPPARSE_DATA_DIR}/${short}.results
 # echo $short $results $args
