@@ -137,6 +137,7 @@ def train(args):
         sys.exit(0)
 
     current_lr = args['lr']
+    mapping_lr = 0.1
     # scale_lr = current_lr
     print("Training parser...")
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
@@ -146,8 +147,7 @@ def train(args):
     global_step = 0
     max_steps = args['max_steps']
     dev_score_history = []
-    # best_dev_preds = []
-    global_start_time = time.time()
+    # global_start_time = time.time()
     format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), acc: {:.6f}'
 
     last_best_step = 0
@@ -170,7 +170,6 @@ def train(args):
                 
 
             if global_step % len(train_batch) == 0:
-            #     # eval on dev
                 print("Evaluating on dev set...")
                 total_node_system = 0
                 total_node_gold = 0
@@ -198,11 +197,10 @@ def train(args):
 
 
                 if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
-                    print("max", max(dev_score_history))
                     print("f1 overall", f_1_overall)
                     last_best_step = global_step
                     trainer.save(model_file)
-                    print("new best model saved.")
+                    logging.info("new best model saved.")
                 dev_score_history.append(f_1_overall)
 
             # train_loss = 0
@@ -217,15 +215,20 @@ def train(args):
             #     dev_score_history += [dev_score]
             #     print("")
 
-            if global_step - last_best_step >= args['max_steps_before_stop']:
+            if global_step - last_best_step >= 3*len(train_batch):
+                logging.info("Annealing learning rate")
+                #annealing
+                current_lr *= 0.5
+                mapping_lr *= 0.75
+                trainer.optimizer = utils.get_optimizer(trainer.args['optim'], trainer.parameters, current_lr, betas=(0.9, trainer.args['beta2']), eps=1e-6)
+                trainer.mapping_optimizer = utils.get_optimizer('rsgd', trainer.model.hypmapping.parameters(), mapping_lr)
                 # if not using_amsgrad:
                 #     print("Switching to AMSGrad")
                 #     last_best_step = global_step
                 #     using_amsgrad = True
                 #     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
                 # else:
-                do_break = True
-                break
+
 
             if global_step >= args['max_steps']:
                 do_break = True
@@ -284,7 +287,7 @@ def evaluate(args):
         precision = total_correct_heads/total_node_system
         recall = total_correct_heads/total_node_gold
         f_1_overall = 2*precision*recall/(precision+recall)
-    print("Dev F1:", f_1_overall)
+    print("F1:", f_1_overall)
     # else:
     #     # skip eval if dev data does not exist
     #     preds = []
