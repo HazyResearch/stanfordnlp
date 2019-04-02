@@ -198,7 +198,7 @@ def train(args):
 
 
                 if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
-                    print("max", max(dev_score_history))
+                    #print("max", max(dev_score_history))
                     print("f1 overall", f_1_overall)
                     last_best_step = global_step
                     trainer.save(model_file)

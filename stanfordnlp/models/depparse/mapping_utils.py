@@ -25,8 +25,9 @@ from collections import defaultdict
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 # Distortion calculations
+def hyp_dist_origin(x):
+        return np.log((1+np.linalg.norm(x))/(1-np.linalg.norm(x)))
 
 def acosh(x):
     return torch.log(x + torch.sqrt(x**2-1))
@@ -195,7 +196,7 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     return avg
 
 
-def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
+def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     #print("First one\n")
     #print(H1)
     #print("Second one\n")
@@ -206,7 +207,13 @@ def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
     # print(H2.shape) #recovered
     batch_size = H1.shape[0]
     dists = torch.zeros(batch_size, len(sampled_rows))
+    dists_orig = 0
+
     for b in range(batch_size):
+        # let's add a term that captures how far we are in terms of getting the right guy in
+        g_nodes = list(graph[b].nodes())
+        root = g_nodes[0]
+        dists_orig += hyp_dist_origin(mapped_vectors[b,root,:].detach().cpu().numpy())
         i=0
         for row in sampled_rows:
             '''
@@ -224,8 +231,8 @@ def distortion_batch(H1, H2, n, sampled_rows, jobs=16):
     #to_stack = [tup[0] for tup in dists]
     #avg = torch.stack(to_stack).sum() / len(sampled_rows)
     avg = dists.sum(dim=1)/len(sampled_rows)
-    avg = avg.sum()/batch_size
-    return avg
+    tot = (dists_orig * 1.0 + avg.sum())/batch_size
+    return tot
 
 def frac_distortion_row(H):
     return torch.fmod(H, 1).sum()
@@ -527,7 +534,7 @@ def unwrap(x):
 #     H = unwrap(m.dist_matrix())
 #     return H
 
-def get_dist_mat(G, parallelize=True):
+def get_dist_mat(G, parallelize=False):
     n = G.order()
     adj_mat = nx.to_scipy_sparse_matrix(G, nodelist=list(range(G.order())))
     t = time.time()

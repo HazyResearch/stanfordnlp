@@ -106,7 +106,6 @@ class DataLoader:
             processed_sent += [vocab['deprel'].map([w[6] for w in sent])]
             processed.append(processed_sent)
             i+=1
-
         # print("length of data", len(data))
         idx = 0
         for sentence in parse_incr(data_file):
@@ -120,6 +119,7 @@ class DataLoader:
                     target_tensor = torch.from_numpy(target_matrix).float()
                     target_tensor.requires_grad = False
                     processed[idx][7] = target_tensor
+                    processed[idx].append(G)
                 elif len(G_curr) == 0:
                     G = nx.Graph()
                     G.add_node(0)
@@ -127,11 +127,11 @@ class DataLoader:
                     target_tensor = torch.from_numpy(target_matrix).float()
                     target_tensor.requires_grad = False
                     processed[idx][7] = target_tensor
+                    processed[idx].append(G)
                 idx += 1
             else:
                 break
         
-
         return processed
 
     def __len__(self):
@@ -187,7 +187,9 @@ class DataLoader:
         # print("head shape", head.shape)
         # print("lemma shape", lemma.shape)
         deprel = get_long_tensor(batch[8], batch_size)
-        return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, orig_idx, word_orig_idx, sentlens, word_lens
+        graph = batch[9]
+
+        return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, graph, orig_idx, word_orig_idx, sentlens, word_lens
 
     def load_file(self, filename, evaluation=False):
         conll_file = conll.CoNLLFile(filename)
