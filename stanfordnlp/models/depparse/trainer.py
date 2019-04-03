@@ -19,11 +19,12 @@ def unpack_batch(batch, use_cuda):
     else:
         inputs = batch[:11]
     
-    orig_idx = batch[11]
-    word_orig_idx = batch[12]
-    sentlens = batch[13]
-    wordlens = batch[14]
-    return inputs, orig_idx, word_orig_idx, sentlens, wordlens
+    graph = batch[11]
+    orig_idx = batch[12]
+    word_orig_idx = batch[13]
+    sentlens = batch[14]
+    wordlens = batch[15]
+    return inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens
 
 class Trainer(BaseTrainer):
     """ A trainer for training models. """
@@ -56,7 +57,7 @@ class Trainer(BaseTrainer):
         self.scale_optimizer = torch.optim.SGD([self.scale], lr=0.05)
     
     def update(self, batch, eval=False, subsample=True):
-        inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
+        inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
         word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel = inputs
 
         if eval:
@@ -67,9 +68,9 @@ class Trainer(BaseTrainer):
             self.mapping_optimizer.zero_grad()
             self.scale_optimizer.zero_grad()
         if subsample:
-            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, True)
+            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph, True)
         else:
-            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, False)
+            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph, False)
 
         loss_val = loss.data.item()
         if eval:
@@ -85,11 +86,11 @@ class Trainer(BaseTrainer):
 
 
     def predict(self, batch, unsort=True):
-        inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
+        inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
         word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel = inputs
 
         self.model.eval()
-        loss, edge_acc, f1_total, correct_heads, node_system, node_gold = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale)
+        loss, edge_acc, f1_total, correct_heads, node_system, node_gold = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph)
         # head_seqs = [chuliu_edmonds_one_root(adj[:l, :l])[1:] for adj, l in zip(preds[0], sentlens)] # remove attachment for the root
         # deprel_seqs = [self.vocab['deprel'].unmap([preds[1][i][j+1][h] for j, h in enumerate(hs)]) for i, hs in enumerate(head_seqs)]
 

@@ -215,6 +215,7 @@ def train(args):
             #     dev_score_history += [dev_score]
             #     print("")
 
+<<<<<<< HEAD
             if global_step - last_best_step >= 3*len(train_batch):
                 logging.info("Annealing learning rate")
                 #annealing
@@ -222,6 +223,15 @@ def train(args):
                 mapping_lr *= 0.75
                 trainer.optimizer = utils.get_optimizer(trainer.args['optim'], trainer.parameters, current_lr, betas=(0.9, trainer.args['beta2']), eps=1e-6)
                 trainer.mapping_optimizer = utils.get_optimizer('rsgd', trainer.model.hypmapping.parameters(), mapping_lr)
+=======
+                if global_step - last_best_step >= 3*len(train_batch):
+                    logging.info("Annealing learning rate")
+                    #annealing
+                    current_lr *= 0.5
+                    mapping_lr *= 0.75
+                    trainer.optimizer = utils.get_optimizer(trainer.args['optim'], trainer.parameters, current_lr, betas=(0.9, trainer.args['beta2']), eps=1e-6)
+                    trainer.mapping_optimizer = utils.get_optimizer('rsgd', trainer.model.hypmapping.parameters(), mapping_lr)
+>>>>>>> 905221d7caecd0c984abac6916af37f4192c1582
                 # if not using_amsgrad:
                 #     print("Switching to AMSGrad")
                 #     last_best_step = global_step

@@ -95,7 +95,7 @@ class Parser(nn.Module):
         self.drop = nn.Dropout(args['dropout'])
         self.worddrop = WordDropout(args['word_dropout'])
 
-    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, subsample=True):
+    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, graph, subsample=True):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
@@ -216,7 +216,7 @@ class Parser(nn.Module):
             # print("sampled rows", sampled_rows)
             # print("mapped vectors", mapped_vectors.shape)
             # print("dist recovered shape", dist_recovered.shape)
-            loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows)
+            loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows, graph, mapped_vectors)
             # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
             # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
             # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
