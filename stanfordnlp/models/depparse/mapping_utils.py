@@ -27,7 +27,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Distortion calculations
 def hyp_dist_origin(x):
-        return np.log((1+np.linalg.norm(x))/(1-np.linalg.norm(x)))
+        #return np.log((1+np.linalg.norm(x))/(1-np.linalg.norm(x)))
+        return torch.log(torch.div(1+torch.norm(x),1-torch.norm(x)))
 
 def acosh(x):
     return torch.log(x + torch.sqrt(x**2-1))
@@ -207,13 +208,23 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     # print(H2.shape) #recovered
     batch_size = H1.shape[0]
     dists = torch.zeros(batch_size, len(sampled_rows))
-    dists_orig = 0
+    dists_orig = torch.zeros(batch_size)
 
     for b in range(batch_size):
         # let's add a term that captures how far we are in terms of getting the right guy in
         g_nodes = list(graph[b].nodes())
         root = g_nodes[0]
-        dists_orig += hyp_dist_origin(mapped_vectors[b,root,:].detach().cpu().numpy())
+        '''
+        print("root = ", root)
+        print("location = ", mapped_vectors[b,root,:])
+        print("Root norm = ", np.linalg.norm(mapped_vectors[b,root,:].detach().cpu().numpy()))
+        print("Other norms = ")
+        for i in range(n):
+            print(np.linalg.norm(mapped_vectors[b,i,:].detach().cpu().numpy()))
+        print()
+        '''
+
+        dists_orig[b] = hyp_dist_origin(mapped_vectors[b,root,:])
         i=0
         for row in sampled_rows:
             '''
@@ -231,7 +242,10 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     #to_stack = [tup[0] for tup in dists]
     #avg = torch.stack(to_stack).sum() / len(sampled_rows)
     avg = dists.sum(dim=1)/len(sampled_rows)
-    tot = (dists_orig * 1.0 + avg.sum())/batch_size
+    #print(" we added ", dists_orig)
+    #print(" the normal is ", avg.sum())
+
+    tot = (dists_orig.sum() * 1.0 + avg.sum())/batch_size
     return tot
 
 def frac_distortion_row(H):
