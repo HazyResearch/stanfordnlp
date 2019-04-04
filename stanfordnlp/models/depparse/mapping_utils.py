@@ -196,8 +196,24 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     avg = dists.sum() / len(sampled_rows)
     return avg
 
+def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
+    batch_size = H1.shape[0]
+    dists = torch.zeros(batch_size, len(sampled_rows))
+    dists_orig = torch.zeros(batch_size)
+    diag_mask = torch.eye(n)
+    diag_mask = diag_mask.unsqueeze(0)
+    diag_mask = diag_mask.expand(batch_size, n, n).cuda()
+    off_diag  = torch.ones(batch_size, n, n).cuda() - diag_mask
+    # these have 1's on the diagonals. Also avoid having to divide by 0:
+    H1_masked = H1 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
+    H2_masked = H2 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
 
-def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
+    dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
+    dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
+
+    return (dist1.sum() + dist2.sum()) / (2* batch_size * n * n)
+
+def distortion_batch_old(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     #print("First one\n")
     #print(H1)
     #print("Second one\n")
