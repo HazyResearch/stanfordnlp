@@ -196,15 +196,22 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     avg = dists.sum() / len(sampled_rows)
     return avg
 
-def distortion_batch_new(H1, H2, n, sampled_rows, graph, mapped_vectors):
+def distortion_batch_vect(H1, H2, n, sampled_rows, mapped_vectors):
+    t = time.time()
     batch_size = H1.shape[0]
-    dists = torch.zeros(batch_size, len(sampled_rows))
-    dists_orig = torch.zeros(batch_size)
-    
     diag_mask = torch.eye(n)
     diag_mask = diag_mask.unsqueeze(0)
     diag_mask = diag_mask.expand(batch_size, n, n).cuda()
     off_diag  = torch.ones(batch_size, n, n).cuda() - diag_mask
+    
+    os = torch.zeros(batch_size, n, n).cuda()
+    ns = torch.ones(batch_size, n, n).cuda()
+    H1m = torch.where(H1 > 0, ns, os).cuda()
+    H2m = torch.where(H2 > 0, ns, os).cuda()
+       
+    good1 = torch.clamp(H1m.sum(), min=1)
+    good2 = torch.clamp(H2m.sum(), min=1)
+
     # these have 1's on the diagonals. Also avoid having to divide by 0:
     H1_masked = H1 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
     H2_masked = H2 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
@@ -212,7 +219,11 @@ def distortion_batch_new(H1, H2, n, sampled_rows, graph, mapped_vectors):
     dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
     dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
 
-    return (dist1.sum() + dist2.sum()) / (2* batch_size * n * n)
+    H1_focus = ns  / (torch.clamp(H1_masked, min=1))
+
+    l = ((dist1*H2m*H1_focus)).sum()/good1 + ((dist2*H1m*H1_focus)).sum()/good2
+    #print("time to compute the loss = ", time.time()-t)
+    return l
 
 def distortion_batch(H1, H2, n, sampled_rows):
 
@@ -394,8 +405,10 @@ def get_heads_batch(hrec_batch, sentlens, roots):
                         find_heads(neighbor, G, head_dict)
 
             return head_dict
-
+        
         head_dict = find_heads(root, G, head_dict)
+        # print("sent len", size)
+        # print("head dict", len(head_dict.keys()))
         keylist = head_dict.keys()
         keylist = sorted(keylist)
         for key in keylist:
