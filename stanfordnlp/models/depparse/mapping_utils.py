@@ -60,9 +60,11 @@ def dist_p(u,v):
     return acosh(torch.clamp(uu, min=1+machine_eps))
 
 def dist_pb(u,v):
+    #print("u = ", u, " v = ", v)
     z  = 2*torch.norm(u-v,2, dim=1)**2
     uu = 1. + torch.div(z,((1-torch.norm(u,2, dim=1)**2)*(1-torch.norm(v,2, dim=1)**2)))
     machine_eps = np.finfo(uu.data.detach().cpu().numpy().dtype).eps  # problem with cuda tensor
+    #print("distance was ", acosh(torch.clamp(uu, min=1+machine_eps)))
     return acosh(torch.clamp(uu, min=1+machine_eps))
 
 def distance_matrix_euclidean(input):
@@ -97,8 +99,8 @@ def distance_matrix_hyperbolic(input, sampled_rows, scale):
     idx = 0
     for row in sampled_rows:
         for i in range(row_n):
-            if i != row:
-                dist_mat[idx, i] = dist_p(input[row,:], input[i,:])*scale
+            #if i != row:
+            dist_mat[idx, i] = dist_p(input[row,:], input[i,:])*scale
         idx += 1
     #print("Distance matrix", dist_mat)
     #print()
@@ -115,8 +117,8 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
     idx = 0
     for row in sampled_rows:
         for i in range(row_n):
-            if i != row:
-                dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
+            #if i != row:
+            dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
     #print("Distance matrix", dist_mat)
     return dist_mat
@@ -197,9 +199,8 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     return avg
 
 def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
+    t = time.time()
     batch_size = H1.shape[0]
-    dists = torch.zeros(batch_size, len(sampled_rows))
-    dists_orig = torch.zeros(batch_size)
     diag_mask = torch.eye(n)
     diag_mask = diag_mask.unsqueeze(0)
     diag_mask = diag_mask.expand(batch_size, n, n).cuda()
@@ -207,11 +208,11 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     
     os = torch.zeros(batch_size, n, n).cuda()
     ns = torch.ones(batch_size, n, n).cuda()
-    H1m = torch.where(H1 > 0, ns, os)
-    H2m = torch.where(H2 > 0, ns, os)
+    H1m = torch.where(H1 > 0, ns, os).cuda()
+    H2m = torch.where(H2 > 0, ns, os).cuda()
        
-    good1 = H1m.sum()
-    good2 = H2m.sum()
+    good1 = torch.clamp(H1m.sum(), min=1)
+    good2 = torch.clamp(H2m.sum(), min=1)
 
     # these have 1's on the diagonals. Also avoid having to divide by 0:
     H1_masked = H1 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
@@ -220,9 +221,12 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
     dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
 
-    H1_focus = ns  / (H1 * off_diag + diag_mask)
+    H1_focus = ns  / (torch.clamp(H1_masked, min=1)**2)
 
-    return (dist1*H2m*H1_focus).sum()/good1 + (dist2*H1m*H1_focus).sum()/good2
+    l = ((dist1*H2m*H1_focus)).sum()/good1 + ((dist2*H1m*H1_focus)).sum()/good2
+    #print("time to compute the loss = ", time.time()-t)
+    return l
+
 
 def distortion_batch_old(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     #print("First one\n")
