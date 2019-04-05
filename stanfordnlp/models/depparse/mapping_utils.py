@@ -221,7 +221,7 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
     dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
 
-    H1_focus = ns  / (torch.clamp(H1_masked, min=1)**2)
+    H1_focus = ns  / (torch.clamp(H1_masked, min=1))
 
     l = ((dist1*H2m*H1_focus)).sum()/good1 + ((dist2*H1m*H1_focus)).sum()/good2
     #print("time to compute the loss = ", time.time()-t)
