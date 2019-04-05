@@ -200,6 +200,7 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     batch_size = H1.shape[0]
     dists = torch.zeros(batch_size, len(sampled_rows))
     dists_orig = torch.zeros(batch_size)
+    
     diag_mask = torch.eye(n)
     diag_mask = diag_mask.unsqueeze(0)
     diag_mask = diag_mask.expand(batch_size, n, n).cuda()

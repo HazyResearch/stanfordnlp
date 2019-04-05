@@ -19,12 +19,11 @@ def unpack_batch(batch, use_cuda):
     else:
         inputs = batch[:11]
     
-    graph = batch[11]
-    orig_idx = batch[12]
-    word_orig_idx = batch[13]
-    sentlens = batch[14]
-    wordlens = batch[15]
-    return inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens
+    orig_idx = batch[11]
+    word_orig_idx = batch[12]
+    sentlens = batch[13]
+    wordlens = batch[14]
+    return inputs, orig_idx, word_orig_idx, sentlens, wordlens
 
 class Trainer(BaseTrainer):
     """ A trainer for training models. """
@@ -53,11 +52,11 @@ class Trainer(BaseTrainer):
         else:
             self.model.cpu()
         self.optimizer = utils.get_optimizer(self.args['optim'], self.parameters, self.args['lr'], betas=(0.9, self.args['beta2']), eps=1e-6)
-        self.mapping_optimizer = utils.get_optimizer('rsgd', self.model.hypmapping.parameters(), 0.01)
+        self.mapping_optimizer = utils.get_optimizer('rsgd', self.model.hypmapping.parameters(), 0.1)
         self.scale_optimizer = torch.optim.SGD([self.scale], lr=0.01)
     
     def update(self, batch, eval=False, subsample=True):
-        inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
+        inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
         word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel = inputs
 
         if eval:
@@ -68,9 +67,9 @@ class Trainer(BaseTrainer):
             self.mapping_optimizer.zero_grad()
             self.scale_optimizer.zero_grad()
         if subsample:
-            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph, True)
+            loss, edge_acc, preds= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, True)
         else:
-            loss, edge_acc, f1_total, correct_heads, node_system, node_gold= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph, False)
+            loss, edge_acc, preds= self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, False)
 
         loss_val = loss.data.item()
         if eval:
@@ -86,18 +85,20 @@ class Trainer(BaseTrainer):
 
 
     def predict(self, batch, unsort=True):
-        inputs, graph, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
+        inputs, orig_idx, word_orig_idx, sentlens, wordlens = unpack_batch(batch, self.use_cuda)
         word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel = inputs
 
         self.model.eval()
-        loss, edge_acc, f1_total, correct_heads, node_system, node_gold = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale, graph)
+        loss, edge_acc, preds = self.model(word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, self.scale)
         # head_seqs = [chuliu_edmonds_one_root(adj[:l, :l])[1:] for adj, l in zip(preds[0], sentlens)] # remove attachment for the root
         # deprel_seqs = [self.vocab['deprel'].unmap([preds[1][i][j+1][h] for j, h in enumerate(hs)]) for i, hs in enumerate(head_seqs)]
 
         # pred_tokens  = [[[str(head_seqs[i][j]), deprel_seqs[i][j]] for j in range(sentlens[i]-1)] for i in range(batch_size)]
-        # if unsort:
-        #     preds = utils.unsort(preds, orig_idx)
-        return edge_acc, f1_total, correct_heads, node_system, node_gold
+        # print("Before unsort", len(preds), len(preds[0]))
+        if unsort:
+            preds = utils.unsort(preds, orig_idx)
+        # print("After unsort", len(preds), len(preds[0]))
+        return preds
     
     def save(self, filename, skip_modules=True):
         model_state = self.model.state_dict()
