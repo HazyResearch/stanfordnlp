@@ -367,43 +367,46 @@ def get_heads(G, head_dict, node_list):
         head_dict[root] = 'root'
     return G, head_dict, node_list
 
-def get_heads_batch(hrec_batch, sentlens):
+def get_heads_batch(hrec_batch, sentlens, roots):
 
     batch_size = hrec_batch.shape[0]
     preds = []
+    #placeholder
     rel = 'obj'
 
     for b in range(batch_size):
         hrec = hrec_batch[b,:,:]
-        ind = sentlens[b]
-        hrec = hrec[:ind,:ind]
+        size = sentlens[b]
+        root = roots[b]
+        hrec = hrec[:size,:size]
         mst = csg.minimum_spanning_tree(hrec)
         G = nx.from_scipy_sparse_matrix(mst)
         seq = []
         head_dict = {}
-        node_list = [n for n in list(G.nodes()) if G.degree(n) > 0]
-        if len(node_list) !=0:
-            _, head_dict, _ = get_heads(G, head_dict, node_list)
-        else:
-            head_dict[0] = 'root'
+        head_dict[root] = 'root'
 
+        def find_heads(root, G, head_dict):
+            neighbor_list = [n for n in G.neighbors(root)]
+            if len(neighbor_list) != 0:
+                for neighbor in neighbor_list:
+                    if neighbor not in head_dict.keys():         
+                        head_dict[neighbor] = root
+                        find_heads(neighbor, G, head_dict)
+
+            return head_dict
+
+        head_dict = find_heads(root, G, head_dict)
         keylist = head_dict.keys()
         keylist = sorted(keylist)
         for key in keylist:
-            # print(key, seq)
             if head_dict[key] == 'root':
                 seq.append(['0', 'root'])
             else:
                 seq.append([str(head_dict[key]+1), rel])
-        root_num = 0
-        for head, deprel in seq:
-            if deprel == 'root':
-                root_num += 1
-        if root_num != 1:
-            print("Num of root", root_num)
-            print(seq)
+
 
         preds += [seq]
+
 
     return preds
 

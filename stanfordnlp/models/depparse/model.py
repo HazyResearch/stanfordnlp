@@ -357,7 +357,7 @@ class Parser(nn.Module):
         self.drop = nn.Dropout(args['dropout'])
         self.worddrop = WordDropout(args['word_dropout'])
 
-    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, subsample=True):
+    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, root, subsample=True):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
@@ -511,7 +511,7 @@ class Parser(nn.Module):
             # print("dist recovered shape", dist_recovered.shape)            
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
-            preds = util.get_heads_batch(dummy.detach().cpu().numpy(), sentlens)
+            preds = util.get_heads_batch(dummy.detach().cpu().numpy(), sentlens, root)
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 

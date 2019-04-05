@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument('--no_distance', dest='distance', action='store_true', help="Turn off distance term.")
     parser.add_argument('--sample_train', type=float, default=1.0, help='Subsample training data.')
     parser.add_argument('--optim', type=str, default='sgd', help='sgd, rsgd, adagrad, adam or adamax.')
-    parser.add_argument('--lr', type=float, default=5e-2, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate')
     parser.add_argument('--beta2', type=float, default=0.95)
     parser.add_argument('--max_steps', type=int, default=1000000)
     parser.add_argument('--eval_interval', type=int, default=10)
