@@ -16,8 +16,8 @@ lang=`echo $short | sed -e 's#_.*##g'`
 
 train_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-train.conllu
 eval_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
-# output_file=${DEPPARSE_DATA_DIR}/${short}.test.pred.conllu
-# gold_file=./data/conllu/ud-treebanks-v2.3/UD_English-EWT/en_ewt-ud-dev.conllu
+output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.conllu
+gold_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
 
 
 if [ ! -e $train_file ]; then
@@ -31,15 +31,17 @@ batch_size=10
 echo "Using batch size $batch_size"
 
 echo "Running parser with $args..."
+
+
 python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --train_file $train_file --eval_file $eval_file \
-    --shorthand $short --batch_size $batch_size --save_name $save_name --sample_train $sample_train \
-    --mode train $args \
-    
+    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --batch_size $batch_size \
+    --sample_train $sample_train --save_name $save_name\
+    --mode train $args
 python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file \
-     --shorthand $short --save_name $save_name \
-     --mode predict $args 
+    --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --save_name $save_name \
+    --mode predict $args
 
 
-# results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`
+results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`
 echo $results $args >> ${DEPPARSE_DATA_DIR}/${short}.results
-# echo $short $results $args
+echo $short $results $args

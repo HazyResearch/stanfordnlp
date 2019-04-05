@@ -196,7 +196,7 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     avg = dists.sum() / len(sampled_rows)
     return avg
 
-def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
+def distortion_batch_new(H1, H2, n, sampled_rows, graph, mapped_vectors):
     batch_size = H1.shape[0]
     dists = torch.zeros(batch_size, len(sampled_rows))
     dists_orig = torch.zeros(batch_size)
@@ -214,55 +214,19 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
 
     return (dist1.sum() + dist2.sum()) / (2* batch_size * n * n)
 
-def distortion_batch_old(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
-    #print("First one\n")
-    #print(H1)
-    #print("Second one\n")
-    #print(H2)
+def distortion_batch(H1, H2, n, sampled_rows):
 
-    # dists = Parallel(n_jobs=jobs)(delayed(distortion_row)(H1[i,:],H2[i,:],n,i) for i in range(n))
-    # print(H1.shape) #target
-    # print(H2.shape) #recovered
     batch_size = H1.shape[0]
     dists = torch.zeros(batch_size, len(sampled_rows))
-    dists_orig = torch.zeros(batch_size)
 
     for b in range(batch_size):
-        # let's add a term that captures how far we are in terms of getting the right guy in
-        g_nodes = list(graph[b].nodes())
-        root = g_nodes[0]
-        '''
-        print("root = ", root)
-        print("location = ", mapped_vectors[b,root,:])
-        print("Root norm = ", np.linalg.norm(mapped_vectors[b,root,:].detach().cpu().numpy()))
-        print("Other norms = ")
-        for i in range(n):
-            print(np.linalg.norm(mapped_vectors[b,i,:].detach().cpu().numpy()))
-        print()
-        '''
-
-        dists_orig[b] = hyp_dist_origin(mapped_vectors[b,root,:])
         i=0
         for row in sampled_rows:
-            '''
-            print("on row ", row) 
-            print()
-            print("true")
-            print(H1[b,row,:])
-            print("ours")
-            print(H2[b,i,:])
-            print()
-            '''
             dists[b,i] = distortion_row(H1[b,row,:], H2[b,i,:], n, row)[0]
             i += 1
 
-    #to_stack = [tup[0] for tup in dists]
-    #avg = torch.stack(to_stack).sum() / len(sampled_rows)
     avg = dists.sum(dim=1)/len(sampled_rows)
-    #print(" we added ", dists_orig)
-    #print(" the normal is ", avg.sum())
-
-    tot = (dists_orig.sum() * 1.0 + avg.sum())/batch_size
+    tot = (avg.sum())/batch_size
     return tot
 
 def frac_distortion_row(H):
@@ -275,25 +239,6 @@ def frac_distortion(H, sampled_rows):
         frac_dists[i] = frac_distortion_row(H[i,:])
 
     return frac_dists.sum() / len(sampled_rows)
-
-    
-'''
-
-def distortion(H1, H2, n, jobs):
-    H1 = np.array(H1.cpu()), 
-    H2 = np.array(H2.detach().cpu())
-    dists = Parallel(n_jobs=jobs)(delayed(distortion_row)(H1[i,:],H2[i,:],n,i) for i in range(n))
-    dists = np.vstack(dists)
-    mc = max(dists[:,0])
-    me = max(dists[:,1])
-    # wc = max(dists[:,0])*max(dists[:,1])
-    avg = sum(dists[:,2])/n
-    bad = sum(dists[:,3])
-    #return (mc, me, avg, bad)    
-    to_stack = [tup[0] for tup in dists]
-    avg = torch.stack(to_stack).sum()/n
-    return avg
-'''
 
 
 #Loading the graph and getting the distance matrix.

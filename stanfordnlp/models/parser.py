@@ -90,23 +90,24 @@ def main():
     elif args.cuda:
         torch.cuda.manual_seed(args.seed)
 
-    formatter = logging.Formatter('%(asctime)s %(message)s')
-    logging.basicConfig(level=logging.DEBUG,
-                        format='%(message)s',
-                        datefmt='%FT%T',)
-    logging.info(f"Logging")
-    log = logging.getLogger()
-    fh  = logging.FileHandler("logofficialbincrlr")
-    fh.setFormatter(formatter)
-    log.addHandler(fh)
-
     args = vars(args)
     print("Running parser in {} mode".format(args['mode']))
 
-    # if args['mode'] == 'train':
-    train(args)
-    # else:
-    #     evaluate(args)
+    if args['mode'] == 'train':
+        formatter = logging.Formatter('%(asctime)s %(message)s')
+        logging.basicConfig(level=logging.DEBUG,
+                        format='%(message)s',
+                        datefmt='%FT%T',)
+        logging.info(f"Logging")
+        log = logging.getLogger()
+        log_name = "logs/"+str(args['save_name'])
+        if not os.path.exists(log_name): os.system("touch "+log_name)
+        fh  = logging.FileHandler(log_name)
+        fh.setFormatter(formatter)
+        log.addHandler(fh)
+        train(args)
+    else:
+        evaluate(args)
 
 def train(args):
     utils.ensure_dir(args['save_dir'])
@@ -119,7 +120,7 @@ def train(args):
     pretrain = Pretrain(pretrain_file, vec_file)
 
     # load data
-    print("Loading data with batch size {}...".format(args['batch_size']))
+    logging.info("Loading data with batch size {}...".format(args['batch_size']))
     train_batch = DataLoader(args['train_file'], args['batch_size'], args, pretrain, evaluation=False)
     vocab = train_batch.vocab
     dev_batch = DataLoader(args['eval_file'], args['batch_size'], args, pretrain, vocab=vocab, evaluation=True)
@@ -129,13 +130,11 @@ def train(args):
     gold_file = args['gold_file']
 
     # skip training if the language does not have training or dev data
-    # if len(train_batch) == 0 or len(dev_batch) == 0:
-    if len(train_batch) == 0:
+    if len(train_batch) == 0 or len(dev_batch) == 0:
         print("Skip training because no data available...")
         sys.exit(0)
 
     current_lr = args['lr']
-    scale_lr = current_lr
     print("Training parser...")
     trainer = Trainer(args=args, vocab=vocab, pretrain=pretrain, use_cuda=args['cuda'])
     print("optimizer:", trainer.optimizer)
@@ -167,60 +166,44 @@ def train(args):
                     max_steps, loss, duration, edge_acc))
                 
 
-            if global_step % (len(train_batch)) == 0:
-            #     # eval on dev
-                print("Evaluating on dev set...")
+            if global_step % len(train_batch) == 0:
+                logging.info("Evaluating on dev set...")
                 dev_preds = []
-                for i, batch in enumerate(dev_batch):
-                    preds = trainer.predict(batch)
-                    # print("preds", len(preds), len(preds[0]))
-
+                for db in dev_batch:
+                    preds = trainer.predict(db)
                     dev_preds += preds
 
                 pr = [y for x in dev_preds for y in x]
-
                 dev_batch.conll.set(['head', 'deprel'], pr)
                 dev_batch.conll.write_conll(system_pred_file)
                 _, _, dev_score = scorer.score(system_pred_file, gold_file)
 
                 train_loss = train_loss / (len(train_batch)) # avg loss per batch
-                print("step {}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, train_loss, dev_score))
+                logging.info("step {}: train_loss = {:.6f}, dev_score = {:.4f}".format(global_step, train_loss, dev_score))
                 train_loss = 0
 
                 # save best model
                 if len(dev_score_history) == 0 or dev_score > max(dev_score_history):
                     last_best_step = global_step
                     trainer.save(model_file)
-                    print("new best model saved.")
+                    logging.info("new best model saved.")
                     best_dev_preds = dev_preds
 
                 dev_score_history += [dev_score]
                 print("")
 
 
-
-            if global_step - last_best_step >= args['max_steps_before_stop']:
-                # if not using_amsgrad:
-                #     print("Switching to AMSGrad")
-                #     last_best_step = global_step
-                #     using_amsgrad = True
-                #     trainer.optimizer = optim.Adam(trainer.model.parameters(), amsgrad=True, lr=args['lr'], betas=(.9, args['beta2']), eps=1e-6)
-                # else:
-                do_break = True
-                break
-
             if global_step >= args['max_steps']:
                 do_break = True
                 break
 
         if do_break: break
-        # print("Reshuffling now")
-        # train_batch.reshuffle()
 
-    print("Training ended with {} steps.".format(global_step))
+
+    logging.info("Training ended with {} steps.".format(global_step))
 
     best_f, best_eval = max(dev_score_history)*100, np.argmax(dev_score_history)+1
-    print("Best dev F1 = {:.2f}, at iteration = {}".format(best_f, best_eval * args['eval_interval']))
+    logging.info("Best dev F1 = {:.2f}, at iteration = {}".format(best_f, best_eval * args['eval_interval']))
 
 def evaluate(args):
     # file paths

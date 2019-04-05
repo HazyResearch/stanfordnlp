@@ -421,7 +421,6 @@ class Parser(nn.Module):
             norm = embedding.norm(p=2, dim=1, keepdim=True)
             max_norm = torch.max(norm)+1e-3
             normalized_emb = embedding.div(max_norm.expand_as(embedding))
-            # print("normalized norm", normalized_emb.norm(p=2, dim=1, keepdim=True))
             lstm_outputs_normalized[idx] = normalized_emb
 
         # print("After normalization:", lstm_outputs.shape)
@@ -460,12 +459,7 @@ class Parser(nn.Module):
 
         if self.training:
             unlabeled_target = head
-            # print("target shape", unlabeled_target.shape)
             n = unlabeled_target.shape[1]
-            # if subsample:
-            #     sample_row_num = int(round(n*subsample_ratio))
-            #     sampled_rows = np.random.permutation(n)[:sample_row_num]
-            # else:
             sampled_rows = list(range(n))
 
 
