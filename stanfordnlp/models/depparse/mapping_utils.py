@@ -204,6 +204,15 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     diag_mask = diag_mask.unsqueeze(0)
     diag_mask = diag_mask.expand(batch_size, n, n).cuda()
     off_diag  = torch.ones(batch_size, n, n).cuda() - diag_mask
+    
+    os = torch.zeros(batch_size, n, n).cuda()
+    ns = torch.ones(batch_size, n, n).cuda()
+    H1m = torch.where(H1 > 0, ns, os)
+    H2m = torch.where(H2 > 0, ns, os)
+       
+    good1 = H1m.sum()
+    good2 = H2m.sum()
+
     # these have 1's on the diagonals. Also avoid having to divide by 0:
     H1_masked = H1 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
     H2_masked = H2 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
@@ -211,7 +220,9 @@ def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
     dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
     dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
 
-    return (dist1.sum() + dist2.sum()) / (2* batch_size * n * n)
+    H1_focus = ns  / (H1 * off_diag + diag_mask)
+
+    return (dist1*H2m*H1_focus).sum()/good1 + (dist2*H1m*H1_focus).sum()/good2
 
 def distortion_batch_old(H1, H2, n, sampled_rows, graph, mapped_vectors, jobs=16):
     #print("First one\n")
