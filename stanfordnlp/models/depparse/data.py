@@ -234,18 +234,7 @@ class DataLoader:
 
         if totallen == len(data):
             batches.append(current)
-            # print("data point", x)
-            # print("data point length", x[0])
-            # if len(x[0]) + currentlen > self.batch_size:
-            #     res.append(current)
-            #     current = []
-            #     currentlen = 0
-            # current.append(x)
-            # currentlen += len(x[0])
-        #     print("current len", currentlen)
-        # print("length of current", len(current))
-        # if currentlen > 0:
-        #     res.append(current)
+
 
         print("length of batches", len(batches))
         return batches

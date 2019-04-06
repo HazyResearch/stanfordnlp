@@ -19,6 +19,10 @@ eval_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
 output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.conllu
 gold_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
 
+test_eval_file = eval_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-test.conllu
+test_output_file=${DEPPARSE_DATA_DIR}/${short}.test.pred.conllu
+test_gold_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-test.conllu
+
 
 if [ ! -e $train_file ]; then
     echo "In the if statement for train file"
@@ -40,6 +44,13 @@ python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --train_file $tra
 python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $eval_file \
     --output_file $output_file --gold_file $gold_file --lang $lang --shorthand $short --save_name $save_name \
     --mode predict $args
+
+#Running eval on test set.
+python -m stanfordnlp.models.parser --wordvec_dir $WORDVEC_DIR --eval_file $test_eval_file \
+    --output_file $test_output_file --gold_file $test_gold_file --lang $lang --shorthand $short \
+    --save_name $save_name \
+    --mode predict $args
+
 
 
 results=`python stanfordnlp/utils/conll18_ud_eval.py -v $gold_file $output_file | head -12 | tail -n+12 | awk '{print $7}'`

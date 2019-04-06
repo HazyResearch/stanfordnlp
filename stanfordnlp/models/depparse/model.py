@@ -180,7 +180,6 @@ class Parser(nn.Module):
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
             edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
-            
             loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows)
 
         else:
