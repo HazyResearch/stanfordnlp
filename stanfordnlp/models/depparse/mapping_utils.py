@@ -65,6 +65,7 @@ def dist_pb(u,v):
     uu = 1. + torch.div(z,((1-torch.norm(u,2, dim=1)**2)*(1-torch.norm(v,2, dim=1)**2)))
     machine_eps = np.finfo(uu.data.detach().cpu().numpy().dtype).eps  # problem with cuda tensor
     #print("distance was ", acosh(torch.clamp(uu, min=1+machine_eps)))
+    print("THIS me = ", machine_eps)
     return acosh(torch.clamp(uu, min=1+machine_eps))
 
 def distance_matrix_euclidean(input):
@@ -106,7 +107,7 @@ def distance_matrix_hyperbolic(input, sampled_rows, scale):
     #print()
     return dist_mat
 
-def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
+def distance_matrix_hyperbolic_batch_old(input, sampled_rows, scale):
     #print("were computing the matrix with sampled_rows = ")
     #print(sampled_rows)
     batch_size = input.shape[0]
@@ -120,7 +121,26 @@ def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
             #if i != row:
             dist_mat[:,idx, i] = dist_pb(input[:,row,:], input[:,i,:])*scale
         idx += 1
-    #print("Distance matrix", dist_mat)
+
+    return dist_mat
+
+def distance_matrix_hyperbolic_batch(input, sampled_rows, scale):
+    batch_size = input.shape[0]
+    row_n = input.shape[1]
+
+    u = torch.stack([input]*row_n).transpose(0,1)
+    v = torch.stack([input]*row_n).transpose(0,1).transpose(1,2)
+
+    nrms = torch.norm(input, 2, 2)
+    pr = torch.ones(batch_size, row_n).cuda() - nrms ** 2
+    den = pr[:, :, None] @ pr[:, None, :]
+    num = 2 * torch.sum((u-v)**2,3).squeeze() if row_n > 1 else 2 * torch.sum((u-v)**2,3)
+
+    dist_mat = torch.ones(batch_size, row_n, row_n).cuda() + torch.div(num, den) * scale
+
+    machine_eps = np.finfo(dist_mat.data.detach().cpu().numpy().dtype).eps  # problem with cuda tensor
+    dist_mat = acosh(torch.clamp(dist_mat, min=1+machine_eps))
+
     return dist_mat
 
 def distance_matrix_euclidean_batch(input, sampled_rows, scale):
