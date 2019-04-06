@@ -157,16 +157,6 @@ def distance_matrix_euclidean_batch(input, sampled_rows, scale):
     #print("Distance matrix", dist_mat)
     return dist_mat
 
-def distance_matrix_hyperbolic_parsing(input_length, input, sampled_rows, scale):
-    dist_mat = torch.zeros(len(sampled_rows), input_length, device=device)
-    idx = 0
-    for row in sampled_rows:
-        for i in range(input_length):
-            if i != row:
-                dist_mat[idx, i] = dist_p(input[row,:], input[i,:])*scale
-        idx += 1
-    # print("Distance matrix", dist_mat)
-    return dist_mat
 
 def distance_matrix_euclidean_parsing(input_length, input, sampled_rows):
     dist_mat = torch.zeros(len(sampled_rows), input_length, device=device)
