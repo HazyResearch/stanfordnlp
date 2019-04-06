@@ -165,30 +165,6 @@ class Parser(nn.Module):
         
         lstm_postdrop = self.drop(lstm_outputs_normalized)
         mapped_vectors = self.hypmapping(lstm_postdrop)
-        # deprel_scores = self.deprel(self.drop(lstm_outputs), self.drop(lstm_outputs))
-
-        #goldmask = head.new_zeros(*head.size(), head.size(-1)+1, dtype=torch.uint8)
-        #goldmask.scatter_(2, head.unsqueeze(2), 1)
-
-        # if self.args['linearization'] or self.args['distance']:
-        #     head_offset = torch.arange(word.size(1), device=head.device).view(1, 1, -1).expand(word.size(0), -1, -1) - torch.arange(word.size(1), device=head.device).view(1, -1, 1).expand(word.size(0), -1, -1)
-
-        # if self.args['linearization']:
-        #     lin_scores = self.linearization(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
-        #     unlabeled_scores += F.logsigmoid(lin_scores * torch.sign(head_offset).float()).detach()
-
-        # if self.args['distance']:
-        #     dist_scores = self.distance(self.drop(lstm_outputs), self.drop(lstm_outputs)).squeeze(3)
-        #     dist_pred = 1 + F.softplus(dist_scores)
-        #     dist_target = torch.abs(head_offset)
-        #     dist_kld = -torch.log((dist_target.float() - dist_pred)**2/2 + 1)
-        #     unlabeled_scores += dist_kld.detach()
-
-        # diag = torch.eye(head.size(-1)+1, dtype=torch.uint8, device=head.device).unsqueeze(0)
-        # unlabeled_scores.masked_fill_(diag, -float('inf'))
-        # print("target tensor", head)
-        # print("target tensor shape", head.shape)
-        # print("mapped vectors", mapped_vectors.shape)
         subsample_ratio = 1.0
         preds = []
         # print("subsample ratio", subsample_ratio)
@@ -199,43 +175,14 @@ class Parser(nn.Module):
             unlabeled_target = head
             n = unlabeled_target.shape[1]
             sampled_rows = list(range(n))
-
-
             dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
             # print("dist recovered shape", dist_recovered.shape)            
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
             edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             
-            # print("sampled rows", sampled_rows)
-            # print("mapped vectors", mapped_vectors.shape)
-            # print("dist recovered shape", dist_recovered.shape)
-            loss = util.distortion_batch_vect(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows, mapped_vectors)
-            # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
-            # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
-            # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
-            # loss = self.crit(unlabeled_scores.contiguous().view(-1, unlabeled_scores.size(2)), unlabeled_target.view(-1))
+            loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows)
 
-            # deprel_scores = deprel_scores[:, 1:] # exclude attachment for the root symbol
-            # #deprel_scores = deprel_scores.masked_select(goldmask.unsqueeze(3)).view(-1, len(self.vocab['deprel']))
-            # deprel_scores = torch.gather(deprel_scores, 2, head.unsqueeze(2).unsqueeze(3).expand(-1, -1, -1, len(self.vocab['deprel']))).view(-1, len(self.vocab['deprel']))
-            # deprel_target = deprel.masked_fill(word_mask[:, 1:], -1)
-            # loss += self.crit(deprel_scores.contiguous(), deprel_target.view(-1))
-
-            # if self.args['linearization']:
-            #     #lin_scores = lin_scores[:, 1:].masked_select(goldmask)
-            #     lin_scores = torch.gather(lin_scores[:, 1:], 2, head.unsqueeze(2)).view(-1)
-            #     lin_scores = torch.cat([-lin_scores.unsqueeze(1)/2, lin_scores.unsqueeze(1)/2], 1)
-            #     #lin_target = (head_offset[:, 1:] > 0).long().masked_select(goldmask)
-            #     lin_target = torch.gather((head_offset[:, 1:] > 0).long(), 2, head.unsqueeze(2))
-            #     loss += self.crit(lin_scores.contiguous(), lin_target.view(-1))
-
-            # if self.args['distance']:
-            #     #dist_kld = dist_kld[:, 1:].masked_select(goldmask)
-            #     dist_kld = torch.gather(dist_kld[:, 1:], 2, head.unsqueeze(2))
-            #     loss -= dist_kld.sum()
-
-            # loss /= wordchars.size(0) # number of words
         else:
             loss = 0
             unlabeled_target = head
