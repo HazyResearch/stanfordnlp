@@ -208,7 +208,7 @@ def distortion(H1, H2, n, sampled_rows, jobs=16):
     avg = dists.sum() / len(sampled_rows)
     return avg
 
-def distortion_batch(H1, H2, n, sampled_rows, graph, mapped_vectors):
+def distortion_batch(H1, H2, n, sampled_rows):
     t = time.time()
     batch_size = H1.shape[0]
     diag_mask = torch.eye(n)

@@ -80,6 +80,15 @@ class Parser(nn.Module):
                            nn.ReLU().to(device),
                            nn.Linear(100, self.output_size).to(device),
                            nn.ReLU().to(device))
+        
+        self.rootpred =  nn.Sequential(
+                           nn.Linear(self.output_size, 100).to(device),
+                           nn.ReLU().to(device),
+                           nn.Linear(100, 100).to(device),
+                           nn.ReLU().to(device),
+                           nn.Linear(100, 1).to(device))
+
+        self.CE = nn.CrossEntropyLoss()  
 
         # self.scale = nn.Parameter(torch.cuda.FloatTensor([1.0]), requires_grad=True)                  
         # self.unlabeled = DeepBiaffineScorer(2 * self.args['hidden_dim'], 2 * self.args['hidden_dim'], self.args['deep_biaff_hidden_dim'], 1, pairwise=True, dropout=args['dropout'])
@@ -95,7 +104,7 @@ class Parser(nn.Module):
         self.drop = nn.Dropout(args['dropout'])
         self.worddrop = WordDropout(args['word_dropout'])
 
-    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, graph, subsample=True):
+    def forward(self, word, word_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, word_orig_idx, sentlens, wordlens, scale, root, subsample=True):
         def pack(x):
             return pack_padded_sequence(x, sentlens, batch_first=True)
 
@@ -166,6 +175,14 @@ class Parser(nn.Module):
         
         lstm_postdrop = self.drop(lstm_outputs_normalized)
         mapped_vectors = self.hypmapping(lstm_postdrop)
+
+
+        predicted_scores = self.rootpred(mapped_vectors)
+        predicted_scores = predicted_scores.squeeze(-1)
+        batch_size = predicted_scores.shape[0]
+
+        # print("predicted scores after squeeze", predicted_scores)
+
         # deprel_scores = self.deprel(self.drop(lstm_outputs), self.drop(lstm_outputs))
 
         #goldmask = head.new_zeros(*head.size(), head.size(-1)+1, dtype=torch.uint8)
@@ -190,10 +207,14 @@ class Parser(nn.Module):
         # print("target tensor", head)
         # print("target tensor shape", head.shape)
         # print("mapped vectors", mapped_vectors.shape)
+        root = torch.cuda.LongTensor(root)
+        root.requires_grad = False
+        # print("root", root)
         subsample_ratio = 1.0
         preds = []
         # print("subsample ratio", subsample_ratio)
         edge_acc = 0.0
+        correct = 0.0
         f1_total, correct_heads, node_system, node_gold = 0, 0, 0, 0
 
         if self.training:
@@ -211,12 +232,24 @@ class Parser(nn.Module):
             # print("dist recovered shape", dist_recovered.shape)            
             dummy = dist_recovered.clone()
             target_dummy = unlabeled_target.clone()
+            # print("root", root.shape)
+            # print("predicted roots", predicted_roots.shape)
             edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             
             # print("sampled rows", sampled_rows)
             # print("mapped vectors", mapped_vectors.shape)
             # print("dist recovered shape", dist_recovered.shape)
-            loss = util.distortion_batch(unlabeled_target.contiguous(), dist_recovered, n, sampled_rows, graph, mapped_vectors)
+            loss_distortion = util.distortion_batch(unlabeled_target, dist_recovered, n, sampled_rows)
+            #Look at percentage correct
+            predictions = F.softmax(predicted_scores)
+            max_index = predictions.max(dim = 1)[1]
+            total = (max_index == root).sum()
+            correct = total.item()/(batch_size)
+            # print("total", total)
+            # print("Correct:", total.item()/(batch_size))
+            # print("root before", root)
+            loss_rootpred = self.CE(predicted_scores, root)
+            loss = loss_distortion + 10*loss_rootpred
             # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
             # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
             # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
@@ -259,4 +292,4 @@ class Parser(nn.Module):
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 
-        return loss, edge_acc, f1_total, correct_heads, node_system, node_gold
+        return loss, correct, f1_total, correct_heads, node_system, node_gold

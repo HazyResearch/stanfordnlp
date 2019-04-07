@@ -119,7 +119,7 @@ class DataLoader:
                     target_tensor = torch.from_numpy(target_matrix).float()
                     target_tensor.requires_grad = False
                     processed[idx][7] = target_tensor
-                    processed[idx].append(G)
+                    processed[idx].append(int(curr_tree.token['id'])-1)
                 elif len(G_curr) == 0:
                     G = nx.Graph()
                     G.add_node(0)
@@ -127,7 +127,7 @@ class DataLoader:
                     target_tensor = torch.from_numpy(target_matrix).float()
                     target_tensor.requires_grad = False
                     processed[idx][7] = target_tensor
-                    processed[idx].append(G)
+                    processed[idx].append(0)
                 idx += 1
             else:
                 break
@@ -187,9 +187,14 @@ class DataLoader:
         # print("head shape", head.shape)
         # print("lemma shape", lemma.shape)
         deprel = get_long_tensor(batch[8], batch_size)
-        graph = batch[9]
+        root = batch[9]
+        # root = torch.stack(root_list)
+        # print("batch[7][0]", batch[7][0])
+        # print("head", head)
+        # print("root in data prep", root)
 
-        return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, graph, orig_idx, word_orig_idx, sentlens, word_lens
+
+        return words, words_mask, wordchars, wordchars_mask, upos, xpos, ufeats, pretrained, lemma, head, deprel, root, orig_idx, word_orig_idx, sentlens, word_lens
 
     def load_file(self, filename, evaluation=False):
         conll_file = conll.CoNLLFile(filename)

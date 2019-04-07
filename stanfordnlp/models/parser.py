@@ -148,7 +148,7 @@ def train(args):
     max_steps = args['max_steps']
     dev_score_history = []
     # global_start_time = time.time()
-    format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), acc: {:.6f}'
+    format_str = '{}: step {}/{}, loss = {:.6f} ({:.3f} sec/batch), root acc: {:.6f}'
 
     last_best_step = 0
     last_annealed_step = 0
@@ -191,7 +191,7 @@ def train(args):
                 train_edge_acc /= len(train_batch)
                 train_loss /= len(train_batch)
 
-                logging.info("step {}: Train loss = {:.6f}, Train acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
+                logging.info("step {}: Train loss = {:.6f}, Root pred acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
                 logging.info("step {}: Dev F1 = {:.6f}".format(global_step, f_1_overall))
                 train_loss = 0
                 train_edge_acc = 0
@@ -206,7 +206,7 @@ def train(args):
 
             # train_loss = 0
 
-            if (global_step % 25000 == 0):
+            if (global_step % 50000 == 0):
                 current_lr *= 0.5
                 mapping_lr *= 0.75
                 trainer.optimizer = utils.get_optimizer(trainer.args['optim'], trainer.parameters, current_lr, betas=(0.9, trainer.args['beta2']), eps=1e-6)
