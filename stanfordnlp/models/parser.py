@@ -228,7 +228,7 @@ def evaluate(args):
 
     # load data
     print("Loading data with batch size {}...".format(args['batch_size']))
-    batch = DataLoader(args['eval_file'], args['batch_size'], loaded_args, pretrain, vocab=vocab, evaluation=True)
+    batch = DataLoader(args['eval_file'], 10, loaded_args, pretrain, vocab=vocab, evaluation=True)
 
     if len(batch) > 0:
         print("Start evaluation...")

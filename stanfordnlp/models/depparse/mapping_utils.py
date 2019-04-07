@@ -215,7 +215,7 @@ def distortion_batch(H1, H2, n, sampled_rows):
     H1_masked = H1 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
     H2_masked = H2 * off_diag + diag_mask + torch.ones(batch_size, n, n).cuda()*0.00001
 
-    dist1 = torch.div(torch.abs(H1_masked - H2_masked), H2_masked)
+    dist1 = torch.clamp(torch.div(torch.abs(H1_masked - H2_masked), H2_masked), max=5.0)
     dist2 = torch.div(torch.abs(H2_masked - H1_masked), H1_masked)
 
     H1_focus = ns  / (torch.clamp(H1_masked, min=1))
