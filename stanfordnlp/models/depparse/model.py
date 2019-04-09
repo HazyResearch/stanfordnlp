@@ -147,14 +147,11 @@ class Parser(nn.Module):
 
 
         lstm_inputs = torch.cat([x.data for x in inputs], 1)
-        # print("inputs", inputs)
 
         lstm_inputs = self.worddrop(lstm_inputs, self.drop_replacement)
         lstm_inputs = self.drop(lstm_inputs)
-
         lstm_inputs = PackedSequence(lstm_inputs, inputs[0].batch_sizes)
-        # print("batch size", inputs[0].batch_sizes)
-        # print("lstm inputs", lstm_inputs)
+
 
         # print("word size", word.size(0))
         lstm_outputs, _ = self.parserlstm(lstm_inputs, sentlens, hx=(self.parserlstm_h_init.expand(2 * self.args['num_layers'], word.size(0), self.args['hidden_dim']).contiguous(), self.parserlstm_c_init.expand(2 * self.args['num_layers'], word.size(0), self.args['hidden_dim']).contiguous()))
@@ -225,21 +222,21 @@ class Parser(nn.Module):
             #     sample_row_num = int(round(n*subsample_ratio))
             #     sampled_rows = np.random.permutation(n)[:sample_row_num]
             # else:
-            sampled_rows = list(range(n))
+            # sampled_rows = list(range(n))
 
 
-            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
-            # print("dist recovered shape", dist_recovered.shape)            
-            dummy = dist_recovered.clone()
-            target_dummy = unlabeled_target.clone()
-            # print("root", root.shape)
-            # print("predicted roots", predicted_roots.shape)
-            edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
+            # dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
+            # # print("dist recovered shape", dist_recovered.shape)            
+            # dummy = dist_recovered.clone()
+            # target_dummy = unlabeled_target.clone()
+            # # print("root", root.shape)
+            # # print("predicted roots", predicted_roots.shape)
+            # edge_acc = util.compare_mst_batch(target_dummy.cpu().numpy(), dummy.detach().cpu().numpy())
             
-            # print("sampled rows", sampled_rows)
-            # print("mapped vectors", mapped_vectors.shape)
-            # print("dist recovered shape", dist_recovered.shape)
-            loss_distortion = util.distortion_batch(unlabeled_target, dist_recovered, n, sampled_rows)
+            # # print("sampled rows", sampled_rows)
+            # # print("mapped vectors", mapped_vectors.shape)
+            # # print("dist recovered shape", dist_recovered.shape)
+            # loss_distortion = util.distortion_batch(unlabeled_target, dist_recovered, n, sampled_rows)
             #Look at percentage correct
             predictions = F.softmax(predicted_scores)
             max_index = predictions.max(dim = 1)[1]
@@ -249,7 +246,7 @@ class Parser(nn.Module):
             # print("Correct:", total.item()/(batch_size))
             # print("root before", root)
             loss_rootpred = self.CE(predicted_scores, root)
-            loss = loss_distortion + 10*loss_rootpred
+            loss = loss_rootpred
             # unlabeled_scores = unlabeled_scores[:, 1:, :] # exclude attachment for the root symbol
             # unlabeled_scores = unlabeled_scores.masked_fill(word_mask.unsqueeze(1), -float('inf'))
             # unlabeled_target = head.masked_fill(word_mask[:, 1:], -1)
@@ -284,11 +281,15 @@ class Parser(nn.Module):
             
             # print("sampled rows", sampled_rows)
             # print("mapped vectors", mapped_vectors.shape)
-            dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
-            # print("dist recovered shape", dist_recovered.shape)            
-            dummy = dist_recovered.clone()
-            target_dummy = unlabeled_target.clone()
-            edge_acc, f1_total, correct_heads, node_system, node_gold = util.predict_batch(target_dummy.cpu().numpy(),dummy.detach().cpu().numpy(), sentlens)
+            # dist_recovered = util.distance_matrix_hyperbolic_batch(mapped_vectors, sampled_rows, scale)
+            # # print("dist recovered shape", dist_recovered.shape)            
+            # dummy = dist_recovered.clone()
+            # target_dummy = unlabeled_target.clone()
+            # edge_acc, f1_total, correct_heads, node_system, node_gold = util.predict_batch(target_dummy.cpu().numpy(),dummy.detach().cpu().numpy(), sentlens)
+            predictions = F.softmax(predicted_scores)
+            max_index = predictions.max(dim = 1)[1]
+            total = (max_index == root).sum()
+            correct = total.item()/(batch_size)
             # preds.append(F.log_softmax(unlabeled_scores, 2).detach().cpu().numpy())
             # preds.append(deprel_scores.max(3)[1].detach().cpu().numpy())
 

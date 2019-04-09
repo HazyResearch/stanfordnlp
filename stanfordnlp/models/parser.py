@@ -155,6 +155,7 @@ def train(args):
     # start training
     train_loss = 0
     train_edge_acc = 0
+    dev_root_pred_acc = 0
     
     print("Train batch", len(train_batch))
     while True:
@@ -176,33 +177,35 @@ def train(args):
                 total_node_gold = 0
                 total_correct_heads = 0
                 for db in dev_batch:
-                    _, _, correct_heads, node_system, node_gold = trainer.predict(db)
+                    root_acc, _, correct_heads, node_system, node_gold = trainer.predict(db)
                     total_node_system += node_system
                     total_node_gold += node_gold
                     total_correct_heads += correct_heads
+                    dev_root_pred_acc += root_acc
 
-                precision = total_correct_heads/total_node_system
-                recall = total_correct_heads/total_node_gold
-                f_1_overall = 2*precision*recall/(precision+recall)
+                # precision = total_correct_heads/total_node_system
+                # recall = total_correct_heads/total_node_gold
+                # f_1_overall = 2*precision*recall/(precision+recall)
 
             #     dev_batch.conll.set(['head', 'deprel'], [y for x in dev_preds for y in x])
             #     dev_batch.conll.write_conll(system_pred_file)
             #     _, _, dev_score = scorer.score(system_pred_file, gold_file)
                 train_edge_acc /= len(train_batch)
                 train_loss /= len(train_batch)
+                dev_root_pred_acc /= len(dev_batch)
 
                 logging.info("step {}: Train loss = {:.6f}, Root pred acc. = {:.4f}".format(global_step, train_loss, train_edge_acc))
-                logging.info("step {}: Dev F1 = {:.6f}".format(global_step, f_1_overall))
+                logging.info("step {}: Dev root pred acc. = {:.6f}".format(global_step, dev_root_pred_acc))
                 train_loss = 0
                 train_edge_acc = 0
 
 
-                if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
-                    print("f1 overall", f_1_overall)
-                    last_best_step = global_step
-                    trainer.save(model_file)
-                    logging.info("new best model saved.")
-                dev_score_history.append(f_1_overall)
+                # if len(dev_score_history) == 0 or f_1_overall > max(dev_score_history):
+                #     print("f1 overall", f_1_overall)
+                #     last_best_step = global_step
+                #     trainer.save(model_file)
+                #     logging.info("new best model saved.")
+                # dev_score_history.append(f_1_overall)
 
             # train_loss = 0
 
