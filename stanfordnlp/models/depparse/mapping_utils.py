@@ -474,7 +474,7 @@ def get_heads_batch(hrec_batch, sentlens, roots):
             if head_dict[key] == 'root':
                 seq.append(['0', 'root'])
             else:
-                seq.append([str(head_dict[key]+1), rel])
+                seq.append([str(head_dict[key]), rel])
 
 
         preds += [seq]
