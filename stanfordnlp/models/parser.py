@@ -171,6 +171,7 @@ def train(args):
                 dev_preds = []
                 for db in dev_batch:
                     preds = trainer.predict(db)
+                    print("preds", preds)
                     dev_preds += preds
 
                 pr = [y for x in dev_preds for y in x]

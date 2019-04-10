@@ -19,6 +19,11 @@ eval_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
 output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.conllu
 gold_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-dev.conllu
 
+# train_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-train.conllu
+# eval_file=${DEPPARSE_DATA_DIR}/en_ewt.dev.in1.conllu
+# output_file=${DEPPARSE_DATA_DIR}/${short}.dev.pred.conllu
+# gold_file=${DEPPARSE_DATA_DIR}/en_ewt.dev.in1.conllu
+
 # test_eval_file =./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-test.conllu
 # test_output_file=${DEPPARSE_DATA_DIR}/${short}.test.pred.conllu
 # test_gold_file=./data/conllu/ud-treebanks-v2.3/${treebank}/${short}-ud-test.conllu
@@ -29,7 +34,7 @@ if [ ! -e $train_file ]; then
     bash scripts/prep_depparse_data.sh $treebank $tag_type
 fi
 
-batch_size=10
+batch_size=1
 
 
 echo "Using batch size $batch_size"
