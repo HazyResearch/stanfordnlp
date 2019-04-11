@@ -220,7 +220,7 @@ def distortion_batch(H1, H2, n, sampled_rows):
 
     H1_focus = ns  / (torch.clamp(H1_masked, min=1))
 
-    l = ((dist1*H2m*H1_focus)).sum()/good1 + ((dist2*H1m*H1_focus)).sum()/good2
+    l = ((dist1*H2m*H1_focus * H1m)).sum()/good1 + ((dist2*H1m*H1_focus)).sum()/good2
     #print("time to compute the loss = ", time.time()-t)
     return l
 
